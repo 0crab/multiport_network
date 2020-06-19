@@ -17,6 +17,29 @@ enum conn_queue_item_modes {
     queue_redispatch, /* redispatching from side thread */
 };
 
+enum conn_states {
+    conn_read_socket,
+    conn_parse_cmd,
+
+    conn_count,
+
+    conn_new_cmd,    /**< Prepare connection for next command */
+    conn_waiting,    /**< waiting for a readable socket */
+    conn_read,       /**< reading in a command line */
+    conn_parse_cmd,  /**< try to parse a command from the input buffer */
+    conn_write,      /**< writing out a simple response */
+    conn_nread,      /**< reading in a fixed number of bytes */
+    conn_swallow,    /**< swallowing unnecessary bytes w/o storing */
+    conn_closing,    /**< closing this connection */
+    conn_mwrite,     /**< writing out many items sequentially */
+    conn_closed,     /**< connection is closed */
+    conn_watch,      /**< held by the logger thread as a watcher */
+    conn_max_state   /**< Max state value (used for assertion) */
+};
+
+
+
+
 int * portList;
 
 typedef struct CONNITEM CONN_ITEM;
@@ -30,6 +53,7 @@ struct CONNITEM{
     int     rbytes;      //total bytes in buf
     char*   coffset;   //deal offset
     int     cbytes;     //bytes not deal with
+    conn_states state;
     unsigned long recv_bytes;
     struct event event;
     THREAD_INFO * thread;

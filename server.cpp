@@ -33,19 +33,29 @@ void *worker(void * args){
 }
 
 void process_func(CONN_ITEM *citem){
-    //printf("call process_func\n");
-    //only read once to simulate sertain processing
-    unsigned long bytes=0;
-    int a=read(citem->sfd,citem->rbuf,citem->rbuf_size);
-    bytes+=a;
-    //printf("p%d:read %d\n",portList[citem->thread->thread_index],a);
-    while(a!=0&&a!=-1){
-        a=read(citem->sfd,citem->rbuf,citem->rbuf_size);
-        bytes+=a;
-        //printf("p%d:read %d\n",portList[citem->thread->thread_index],a);
-    }
-    printf("p%d:read %lu\n",portList[citem->thread->thread_index],bytes);
+    bool stop=false;
 
+    int inst_count=0;
+
+    while(!stop){
+
+        switch(citem->state){
+            case conn_read_socket:
+                //printf("call process_func\n");
+                //only read once to simulate sertain processing
+                unsigned long bytes=0;
+                int a=read(citem->sfd,citem->rbuf,citem->rbuf_size);
+                bytes+=a;
+                //printf("p%d:read %d\n",portList[citem->thread->thread_index],a);
+                while(a!=0&&a!=-1){
+                    a=read(citem->sfd,citem->rbuf,citem->rbuf_size);
+                    bytes+=a;
+                    //printf("p%d:read %d\n",portList[citem->thread->thread_index],a);
+                }
+                printf("p%d:read %lu\n",portList[citem->thread->thread_index],bytes);
+                inst_count++;
+        }
+    }
 }
 
 void event_handler(const int fd, const short which, void *arg) {
@@ -74,9 +84,10 @@ void conn_new(CONN_ITEM * citem,struct event_base *base){
     citem->rbytes=0;
     citem->cbytes=0;
     citem->recv_bytes=0;
+    citem->state=conn_read_socket;
 
 
-    event_set(&citem->event, citem->sfd, EV_READ , event_handler, (void *) citem);
+    event_set(&citem->event, citem->sfd, EV_READ | EV_PERSIST , event_handler, (void *) citem);
     event_base_set(base, &citem->event);
 
     if (event_add(&citem->event, 0) == -1) {
@@ -126,7 +137,6 @@ void thread_libevent_process(int fd, short which, void *arg){
 
 void setup_worker(int i){
     THREAD_INFO * me=&threadInfoList[i];
-
 
     struct event_config *ev_config;
     ev_config = event_config_new();
@@ -207,7 +217,8 @@ void conn_dispatch(evutil_socket_t listener, short event, void * args) {
         citem->sfd = fd;
         citem->thread = &threadInfoList[port_index];
         citem->mode = queue_new_conn;
-
+        citem->state = conn_read_socket;  // default to read socket after accepting ;
+                                            // worker will block if there comes no data in socket
         pthread_mutex_lock(&citem->thread->conqlock);
         citem->thread->connQueueList->push(citem);
         printf("thread %d push citem, now cq size:%d\n",port_index,citem->thread->connQueueList->size());
