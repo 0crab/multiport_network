@@ -20,7 +20,7 @@
 
 //Make sure that kv_num_per_thread is an integer multiple of batch_num
 
-#define TOTAL_HEAD_LEN ( use_batch ? \
+#define TOTAL_HEAD_LEN(use_batch) ( use_batch ? \
                             ( kv_num_per_thread / batch_num ) * HEAD_LEN + batch_num * SUBHEAD_LEN : \
                             kv_num_per_thread * HEAD_LEN )
 
@@ -106,10 +106,16 @@ int main(int argc, char **argv) {
         return -1;
     }
 
-
     con_source_data();
 
+
     con_database();
+
+    auto it = source_data.begin();
+    while(it != source_data.end()){
+        cout << it->first << " " << it->second << endl;
+        it ++;
+    }
 
 
 }
@@ -138,7 +144,7 @@ void con_database() {
     bool use_batch = true;
     if (batch_num == 1) use_batch = false;
 
-    my_database = (char *) calloc(1, TOTAL_HEAD_LEN + TOTAL_BODY_LEN);
+    my_database = (char *) calloc(1, TOTAL_HEAD_LEN(use_batch) + TOTAL_BODY_LEN);
 
     if (!use_batch) {
         unsigned long offset = 0;
@@ -152,19 +158,19 @@ void con_database() {
         uint32_t Total_body_length = KEY_LEN + VALUE_LEN;
 
         char package_buf[100];
-        for (int i = 0; i < kv_num_per_thread; i++){
-            memset(package_buf,0, sizeof(package_buf));
+        for (int i = 0; i < kv_num_per_thread; i++) {
+            memset(package_buf, 0, sizeof(package_buf));
 
-            *(uint8_t *)HEAD_MAGIC(package_buf) = Magic;
-            *(uint8_t *)HEAD_OPCODE(package_buf) = Opcode;
-            *(uint16_t *)HEAD_KEY_LENGTH(package_buf) = htons(Key_length);
-            *(uint16_t *)HEAD_BATCH_NUM(package_buf) = htons(Batch_num);
-            *(uint8_t *)HEAD_PRE_HASH(package_buf) = Pre_hash;
-            *(uint8_t *)HEAD_RETAIN(package_buf) = Retain;
-            *(uint32_t *)HEAD_BODY_LENGTH(package_buf) = htonl(Total_body_length);
+            *(uint8_t *) HEAD_MAGIC(package_buf) = Magic;
+            *(uint8_t *) HEAD_OPCODE(package_buf) = Opcode;
+            *(uint16_t *) HEAD_KEY_LENGTH(package_buf) = htons(Key_length);
+            *(uint16_t *) HEAD_BATCH_NUM(package_buf) = htons(Batch_num);
+            *(uint8_t *) HEAD_PRE_HASH(package_buf) = Pre_hash;
+            *(uint8_t *) HEAD_RETAIN(package_buf) = Retain;
+            *(uint32_t *) HEAD_BODY_LENGTH(package_buf) = htonl(Total_body_length);
 
-            const char * key = source_data[i].first.c_str();
-            const char * value = source_data[i].second.c_str();
+            const char *key = source_data[i].first.c_str();
+            const char *value = source_data[i].second.c_str();
             memcpy(PACKAGE_KEY(package_buf), key, KEY_LEN);
             memcpy(PACKAGE_VALUE(package_buf), value, VALUE_LEN);
 
@@ -211,8 +217,8 @@ void con_database() {
                 *(uint8_t *)SUBHEAD_RETAIN(package_buf,j) = Sub_retain;
                 *(uint32_t *)SUBHEAD_VALUE_LENGTH(package_buf,j) = htonl(Sub_value_length);
 
-                const char * key = source_data[i*batch_num + j].first.c_str();
-                const char * value = source_data[i*batch_num + j].second.c_str();
+                const char * key = source_data[i * batch_num + j].first.c_str();
+                const char * value = source_data[i * batch_num + j].second.c_str();
 
                 memcpy(SUBPACKAGE_KEY(package_buf,j), key, KEY_LEN);
                 memcpy(SUBPACKAGE_VALUE(package_buf,j), value, VALUE_LEN);
