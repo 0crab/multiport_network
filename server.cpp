@@ -12,6 +12,7 @@
 
 using namespace std;
 
+
 void state_jump(conn_states & s_state,conn_states t_state){
     s_state = t_state;
 }
@@ -62,8 +63,10 @@ enum try_read_result try_read_network(CONNECTION *c) {
     assert(c != NULL);
 
     if (c->working_buf != c->read_buf) {
-        if (c->remaining_bytes != 0) /* otherwise there's nothing to copy */
+        if (c->remaining_bytes != 0){
             memmove(c->read_buf, c->working_buf, c->remaining_bytes);
+            printf("remaining %d bytes move ; ",c->remaining_bytes);
+        } /* otherwise there's nothing to copy */
         c->working_buf = c->read_buf;
     }
 
@@ -71,9 +74,14 @@ enum try_read_result try_read_network(CONNECTION *c) {
 
     res = read(c->sfd, c->read_buf + c->remaining_bytes, avail);
 
+    printf("receive %d\n",res);
+
     if (res > 0) {
         gotdata = READ_DATA_RECEIVED;
-        c->remaining_bytes += res;
+        c->recv_bytes = res;
+        c->total_bytes = c->remaining_bytes + c->recv_bytes;
+        c->remaining_bytes = c->total_bytes;
+        c->worked_bytes = 0;
     }
     if (res == 0) {
         return READ_ERROR;
@@ -106,13 +114,14 @@ void process_func(CONNECTION *c){
         switch (c->state) {
 
             case conn_read: {
+                printf("[%d:%d] conn_read : ",c->thread_index, c->sfd);
                 try_read_result res =  try_read_network(c);
                 switch (res) {
                     case READ_NO_DATA_RECEIVED:
                         state_jump(c->state, conn_waiting);
                         break;
                     case READ_DATA_RECEIVED:
-                        state_jump(c->state, conn_parse_cmd);
+                        state_jump(c->state, conn_deal_with);
                         break;
                     case READ_ERROR:
                         state_jump(c->state, conn_closing);
@@ -126,36 +135,49 @@ void process_func(CONNECTION *c){
             }
 
             case conn_new_cmd :{
-                if (++ inst_count <= 10){
+                //printf("conn_new_cmd :");
+                if (++ inst_count < ROUND_NUM){
                     reset_cmd_handler(c);
+                    //printf("reset and continue\n");
                 } else{
                     stop = true;
+                    printf("[%d:%d] stop and restart\n", c->sfd);
                 }
                 break;
             }
 
 
             case conn_deal_with : {
-                //working with data 10 bytes every time
-                char work_buf[10];
-                memcpy(work_buf, c->working_buf, 10);
-                c->worked_bytes += 10;
-                c->working_buf = c->read_buf + c->worked_bytes;
-                c->remaining_bytes = c->recv_bytes - c->worked_bytes;
+                if(c->remaining_bytes < TEST_WORK_STEP_SIZE){
+                    state_jump(c->state, conn_waiting);
+                    break;
+                }
 
+                //printf("conn_deal_with: ");
+                //working with data 10 bytes every time
+                char work_buf[TEST_WORK_STEP_SIZE];
+                memcpy(work_buf, c->working_buf, TEST_WORK_STEP_SIZE);
+                c->worked_bytes += TEST_WORK_STEP_SIZE;
+                c->working_buf = c->read_buf + c->worked_bytes;
+                c->remaining_bytes =c->recv_bytes - c->worked_bytes;
+
+                c->bytes_processed_in_this_connection += TEST_WORK_STEP_SIZE;
 
                 state_jump(c->state, conn_new_cmd);
-                printf("thread %d deal with %d bytes\n",c->thread_index, sizeof(work_buf));
+                break;
             }
 
 
             case conn_waiting :{
+                printf("[%d:%d] conn_waiting\n",c->thread_index,c->sfd);
                 state_jump(c->state, conn_read);
                 stop = true;
                 break;
             }
 
             case conn_closing :{
+                printf("[%d:%d] conn_closing ,processed bytes: %lu \n",\
+                        c->thread_index, c->sfd, c->bytes_processed_in_this_connection);
                 conn_close(c);
                 stop = true;
                 break;
@@ -166,9 +188,11 @@ void process_func(CONNECTION *c){
 }
 
 void event_handler(const int fd, const short which, void *arg) {
-    printf("in event handler \n");
+
 
     CONNECTION * c =(CONNECTION *)arg;
+
+    printf("[%d:%d] starting working,worked bytes:%d \n",c->thread_index, c->sfd, c->bytes_processed_in_this_connection);
 
     assert(c != NULL);
 
@@ -201,18 +225,20 @@ void conn_new(int sfd, struct event_base *base ,int thread_index){
 
     }
 
+    c->sfd = sfd;
     c->worked_bytes = 0;
     c->working_buf = c->read_buf;
     c->recv_bytes = 0;
     c->remaining_bytes = 0;
+    c->bytes_processed_in_this_connection = 0;
 
 
     c->thread_index = thread_index;
-    c->state = conn_read_socket;  // default to read socket after accepting ;
+    c->state = conn_read;  // default to read socket after accepting ;
     // worker will block if there comes no data in socket
 
 
-    event_set(&c->event, c->sfd, EV_READ , event_handler, (void *) c);
+    event_set(&c->event, c->sfd, EV_READ | EV_PERSIST, event_handler, (void *) c);
     event_base_set(base, &c->event);
 
     if (event_add(&c->event, 0) == -1) {
@@ -227,7 +253,7 @@ void thread_libevent_process(int fd, short which, void *arg){
     THREAD_INFO *me =(THREAD_INFO *) arg;
     CONN_ITEM *citem=NULL;
 
-    printf("thread %d awaked \n",me->thread_index);
+   // printf("thread %d awaked \n",me->thread_index);
     char buf[1];
 
     if (read(fd, buf, 1) != 1) {
@@ -337,7 +363,7 @@ void init_workers() {
 
 void conn_dispatch(evutil_socket_t listener, short event, void * args) {
     int port_index = *(int *)args;
-    printf("listerner :%d  port %d\n", listener, portList[port_index]);
+    //printf("listerner :%d  port %d\n", listener, portList[port_index]);
 
     struct sockaddr_storage ss;
     socklen_t slen = sizeof(ss);
@@ -354,7 +380,7 @@ void conn_dispatch(evutil_socket_t listener, short event, void * args) {
 
         pthread_mutex_lock(&citem->thread->conqlock);
         citem->thread->connQueueList->push(citem);
-        printf("thread %d push citem, now cq size:%d\n",port_index,citem->thread->connQueueList->size());
+        //printf("thread %d push citem, now cq size:%d\n",port_index,citem->thread->connQueueList->size());
         pthread_mutex_unlock(&citem->thread->conqlock);
 
         char buf[1];
@@ -362,7 +388,7 @@ void conn_dispatch(evutil_socket_t listener, short event, void * args) {
         if (write(citem->thread->notify_send_fd, buf, 1) != 1) {
             perror("Writing to thread notify pipe");
         }
-        printf("awake thread %d\n", port_index);
+       // printf("awake thread %d\n", port_index);
     }
 }
 
@@ -375,7 +401,6 @@ int main() {
     init_conns();
 
     init_workers();
-
 
 
     struct event_base *base;

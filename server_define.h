@@ -21,7 +21,6 @@ enum conn_queue_item_modes {
 };
 
 enum conn_states {
-    conn_read_socket,
     conn_parse_cmd,
 
     conn_count,
@@ -60,9 +59,12 @@ struct CONNECTION{
     int     read_buf_size;          //read buf size
     char*   read_buf;               //read buf
     int     recv_bytes;
+    int     total_bytes;
     char*   working_buf;             //deal offset
     int     worked_bytes;
     int     remaining_bytes;      //bytes not deal with
+
+    unsigned long      bytes_processed_in_this_connection;
 
 
     struct event event;

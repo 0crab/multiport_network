@@ -46,7 +46,7 @@ void *thread_func(void *threadid){
 
     struct sockaddr_in srv_addr;
     srv_addr.sin_family = AF_INET;
-    srv_addr.sin_port = htons(server_port[tid]);
+    srv_addr.sin_port = htons(server_port_base + tid);
     srv_addr.sin_addr.s_addr = htonl(INADDR_ANY);
     //connect server
     socklen_t ret;
