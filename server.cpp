@@ -12,10 +12,23 @@
 
 using namespace std;
 
+void state_jump(conn_states & s_state,conn_states t_state){
+    s_state = t_state;
+}
+
 
 void init_portlist(){
     portList=(int *)(calloc(PORT_NUM, sizeof(int)));
     for(int i=0;i<PORT_NUM;i++) portList[i]=PORT_BASE+i;
+}
+
+void init_conns(){
+    int max_fds = MAX_CONN;
+    if ((conns = (CONNECTION **) calloc(max_fds, sizeof( CONNECTION *))) == NULL) {
+        fprintf(stderr, "Failed to allocate connection structures\n");
+        /* This is unrecoverable so bail out early. */
+        exit(1);
+    }
 }
 
 void *worker(void * args){
@@ -32,73 +45,189 @@ void *worker(void * args){
 
 }
 
-void process_func(CONN_ITEM *citem){
+
+void reset_cmd_handler(CONNECTION * c){
+
+    if (c->remaining_bytes > 0) {
+        state_jump(c->state, conn_deal_with);
+    } else {
+        state_jump(c->state, conn_waiting);
+    }
+}
+
+enum try_read_result try_read_network(CONNECTION *c) {
+    enum try_read_result gotdata = READ_NO_DATA_RECEIVED;
+    int res;
+    int num_allocs = 0;
+    assert(c != NULL);
+
+    if (c->working_buf != c->read_buf) {
+        if (c->remaining_bytes != 0) /* otherwise there's nothing to copy */
+            memmove(c->read_buf, c->working_buf, c->remaining_bytes);
+        c->working_buf = c->read_buf;
+    }
+
+    int avail = c->read_buf_size - c->remaining_bytes;
+
+    res = read(c->sfd, c->read_buf + c->remaining_bytes, avail);
+
+    if (res > 0) {
+        gotdata = READ_DATA_RECEIVED;
+        c->remaining_bytes += res;
+    }
+    if (res == 0) {
+        return READ_ERROR;
+    }
+    if (res == -1) {
+        return READ_ERROR;
+    }
+
+    return gotdata;
+}
+
+void conn_close(CONNECTION *c) {
+    assert(c != NULL);
+
+    event_del(&c->event);
+
+    close(c->sfd);
+
+    return;
+}
+
+
+void process_func(CONNECTION *c){
     bool stop=false;
 
     int inst_count=0;
 
     while(!stop){
 
-        switch(citem->state){
-            case conn_read_socket:
-                //printf("call process_func\n");
-                //only read once to simulate sertain processing
-                unsigned long bytes=0;
-                int a=read(citem->sfd,citem->rbuf,citem->rbuf_size);
-                bytes+=a;
-                //printf("p%d:read %d\n",portList[citem->thread->thread_index],a);
-                while(a!=0&&a!=-1){
-                    a=read(citem->sfd,citem->rbuf,citem->rbuf_size);
-                    bytes+=a;
-                    //printf("p%d:read %d\n",portList[citem->thread->thread_index],a);
+        switch (c->state) {
+
+            case conn_read: {
+                try_read_result res =  try_read_network(c);
+                switch (res) {
+                    case READ_NO_DATA_RECEIVED:
+                        state_jump(c->state, conn_waiting);
+                        break;
+                    case READ_DATA_RECEIVED:
+                        state_jump(c->state, conn_parse_cmd);
+                        break;
+                    case READ_ERROR:
+                        state_jump(c->state, conn_closing);
+                        break;
+                    case READ_MEMORY_ERROR: /* Failed to allocate more memory */
+                        /* State already set by try_read_network */
+                        perror("mem error");
+                        break;
                 }
-                printf("p%d:read %lu\n",portList[citem->thread->thread_index],bytes);
-                inst_count++;
+                break;
+            }
+
+            case conn_new_cmd :{
+                if (++ inst_count <= 10){
+                    reset_cmd_handler(c);
+                } else{
+                    stop = true;
+                }
+                break;
+            }
+
+
+            case conn_deal_with : {
+                //working with data 10 bytes every time
+                char work_buf[10];
+                memcpy(work_buf, c->working_buf, 10);
+                c->worked_bytes += 10;
+                c->working_buf = c->read_buf + c->worked_bytes;
+                c->remaining_bytes = c->recv_bytes - c->worked_bytes;
+
+
+                state_jump(c->state, conn_new_cmd);
+                printf("thread %d deal with %d bytes\n",c->thread_index, sizeof(work_buf));
+            }
+
+
+            case conn_waiting :{
+                state_jump(c->state, conn_read);
+                stop = true;
+                break;
+            }
+
+            case conn_closing :{
+                conn_close(c);
+                stop = true;
+                break;
+            }
+
         }
     }
 }
 
 void event_handler(const int fd, const short which, void *arg) {
-    CONN_ITEM *citem=(CONN_ITEM *)arg;
+    printf("in event handler \n");
 
-    assert(citem != NULL);
+    CONNECTION * c =(CONNECTION *)arg;
+
+    assert(c != NULL);
 
     /* sanity */
-    if (fd != citem->sfd) {
+    if (fd != c->sfd) {
         fprintf(stderr, "Catastrophic: event fd doesn't match conn fd!\n");
         return;
     }
 
-    process_func(citem);
+    process_func(c);
 
     /* wait for next event */
     return;
 }
 
-void conn_new(CONN_ITEM * citem,struct event_base *base){
-    assert(citem->sfd >= 0);
+void conn_new(int sfd, struct event_base *base ,int thread_index){
+    CONNECTION *c;
 
-    citem->rbuf_size=INIT_RBUF_SIZE;
-    citem->rbuf=(char *)malloc(citem->rbuf_size*sizeof(char));
-    citem->coffset=citem->rbuf;
-    citem->rbytes=0;
-    citem->cbytes=0;
-    citem->recv_bytes=0;
-    citem->state=conn_read_socket;
+    assert(sfd >= 0 && sfd < MAX_CONN);
+
+    c = conns[sfd];
+
+    if(c == NULL){
+        if (!(c = (CONNECTION *) calloc(1, sizeof(CONNECTION)))) {
+            fprintf(stderr, "Failed to allocate connection object\n");
+            return ;
+        }
+        c->read_buf_size = INIT_READ_BUF_SIZE;
+        c->read_buf = (char *)malloc(c->read_buf_size * sizeof(char));
+
+    }
+
+    c->worked_bytes = 0;
+    c->working_buf = c->read_buf;
+    c->recv_bytes = 0;
+    c->remaining_bytes = 0;
 
 
-    event_set(&citem->event, citem->sfd, EV_READ | EV_PERSIST , event_handler, (void *) citem);
-    event_base_set(base, &citem->event);
+    c->thread_index = thread_index;
+    c->state = conn_read_socket;  // default to read socket after accepting ;
+    // worker will block if there comes no data in socket
 
-    if (event_add(&citem->event, 0) == -1) {
+
+    event_set(&c->event, c->sfd, EV_READ , event_handler, (void *) c);
+    event_base_set(base, &c->event);
+
+    if (event_add(&c->event, 0) == -1) {
         perror("event_add");
         return ;
     }
+
 }
 
 void thread_libevent_process(int fd, short which, void *arg){
+
     THREAD_INFO *me =(THREAD_INFO *) arg;
     CONN_ITEM *citem=NULL;
+
+    printf("thread %d awaked \n",me->thread_index);
     char buf[1];
 
     if (read(fd, buf, 1) != 1) {
@@ -118,12 +247,16 @@ void thread_libevent_process(int fd, short which, void *arg){
                 break;
             }
             switch (citem->mode) {
-                case queue_new_conn:
-                    conn_new(citem,me->base);
+                case queue_new_conn:{
+                    conn_new(citem->sfd,me->base,me->thread_index);
                     break;
-                case queue_redispatch:
+                }
+
+                case queue_redispatch:{
                     //conn_worker_readd(citem);
                     break;
+                }
+
             }
             break;
         default:
@@ -131,6 +264,7 @@ void thread_libevent_process(int fd, short which, void *arg){
             return;
 
     }
+    free(citem);
 
 }
 
@@ -217,8 +351,7 @@ void conn_dispatch(evutil_socket_t listener, short event, void * args) {
         citem->sfd = fd;
         citem->thread = &threadInfoList[port_index];
         citem->mode = queue_new_conn;
-        citem->state = conn_read_socket;  // default to read socket after accepting ;
-                                            // worker will block if there comes no data in socket
+
         pthread_mutex_lock(&citem->thread->conqlock);
         citem->thread->connQueueList->push(citem);
         printf("thread %d push citem, now cq size:%d\n",port_index,citem->thread->connQueueList->size());
@@ -239,7 +372,10 @@ int main() {
 
     init_portlist();
 
+    init_conns();
+
     init_workers();
+
 
 
     struct event_base *base;
@@ -270,10 +406,10 @@ int main() {
             return -1;
         }
 
-        listener_event = event_new(base,listener,
-                                   EV_READ|EV_PERSIST,
+        listener_event = event_new(base, listener,
+                                   EV_READ | EV_PERSIST,
                                    conn_dispatch,
-                                   (void *)&threadInfoList[i].thread_index);
+                                   (void *) &threadInfoList[i].thread_index);
         /*XXX check it */
         event_add(listener_event, NULL);
     }

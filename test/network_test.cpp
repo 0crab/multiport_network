@@ -6,7 +6,7 @@
 #include <netinet/in.h>
 #include <sys/time.h>
 #include <pthread.h>
-#include "client_tool.h"
+//#include "client_tool.h"
 #include "settings.h"
 //#include "tracer.h"
 
@@ -23,6 +23,8 @@ unsigned long getRunTime(struct timeval begTime) {
 
 void send_data(int threadid,socklen_t fd){
     char send_buf[2000];
+    for(int i = 0;i < 100;i ++) send_buf[i] = i;
+
     memset(send_buf,1, sizeof(send_buf));
     write(fd,send_buf, sizeof(send_buf));
     printf("thread %d send %d\n",threadid, sizeof(send_buf));

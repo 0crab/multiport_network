@@ -5,8 +5,10 @@
 #include <string.h>
 #include <iostream>
 #include <netinet/in.h>
-
-
+#include <sys/socket.h>
+#include <thread>
+#include <unistd.h>
+#include <assert.h>
 
 #define HEAD_LEN 12
 #define SUBHEAD_LEN  8
@@ -106,15 +108,20 @@ int main(int argc, char **argv) {
         return -1;
     }
 
-    con_source_data();
+    //con_source_data();
 
 
     con_database();
 
-    auto it = source_data.begin();
-    while(it != source_data.end()){
-        cout << it->first << " " << it->second << endl;
-        it ++;
+    vector<thread> threads;
+
+    for(int i = 0;i < thread_num; i ++){
+        printf("creating thread %d\n",i);
+        threads.push_back(thread(send_data,i));
+    }
+    for(int i = 0; i < thread_num; i++){
+        printf("stoping %d\n",i);
+        threads[i].join();
     }
 
 
@@ -158,8 +165,13 @@ void con_database() {
         uint32_t Total_body_length = KEY_LEN + VALUE_LEN;
 
         char package_buf[100];
+        char key_buf[KEY_LEN + 1];
+        char value_buf[VALUE_LEN + 1];
+
         for (int i = 0; i < kv_num_per_thread; i++) {
             memset(package_buf, 0, sizeof(package_buf));
+            memset(key_buf, 0, sizeof(key_buf));
+            memset(value_buf, 0, sizeof(value_buf));
 
             *(uint8_t *) HEAD_MAGIC(package_buf) = Magic;
             *(uint8_t *) HEAD_OPCODE(package_buf) = Opcode;
@@ -169,10 +181,12 @@ void con_database() {
             *(uint8_t *) HEAD_RETAIN(package_buf) = Retain;
             *(uint32_t *) HEAD_BODY_LENGTH(package_buf) = htonl(Total_body_length);
 
-            const char *key = source_data[i].first.c_str();
-            const char *value = source_data[i].second.c_str();
-            memcpy(PACKAGE_KEY(package_buf), key, KEY_LEN);
-            memcpy(PACKAGE_VALUE(package_buf), value, VALUE_LEN);
+            sprintf(key_buf, "%d", i);
+            sprintf(value_buf, "%d", i);
+            memset(key_buf + strlen(key_buf), 'k', VALUE_LEN - strlen(key_buf));
+            memset(value_buf + strlen(value_buf), 'v', VALUE_LEN - strlen(value_buf));
+            memcpy(PACKAGE_KEY(package_buf), key_buf, KEY_LEN);
+            memcpy(PACKAGE_VALUE(package_buf), value_buf, VALUE_LEN);
 
             memcpy(my_database + offset, package_buf, NO_BATCH_PACKAGE_LEN );
             offset += NO_BATCH_PACKAGE_LEN;
@@ -191,9 +205,13 @@ void con_database() {
 
         int package_buf_len = batch_num * (SUBHEAD_LEN + KEY_LEN + VALUE_LEN)+100;
         char * package_buf = (char *)malloc(package_buf_len);
+        char key_buf[KEY_LEN + 1];
+        char value_buf[VALUE_LEN + 1];
 
         for(int i = 0; i < kv_num_per_thread/batch_num; i++){
             memset(package_buf,0, package_buf_len);
+            memset(key_buf, 0, sizeof(key_buf));
+            memset(value_buf, 0, sizeof(value_buf));
 
             *(uint8_t *)HEAD_MAGIC(package_buf) = Magic;
             *(uint8_t *)HEAD_OPCODE(package_buf) = Opcode;
@@ -217,11 +235,13 @@ void con_database() {
                 *(uint8_t *)SUBHEAD_RETAIN(package_buf,j) = Sub_retain;
                 *(uint32_t *)SUBHEAD_VALUE_LENGTH(package_buf,j) = htonl(Sub_value_length);
 
-                const char * key = source_data[i * batch_num + j].first.c_str();
-                const char * value = source_data[i * batch_num + j].second.c_str();
+                sprintf(key_buf, "%d", i * batch_num +j);
+                sprintf(value_buf, "%d", i * batch_num + j);
+                memset(key_buf + strlen(key_buf), 'k', VALUE_LEN - strlen(key_buf));
+                memset(value_buf + strlen(value_buf), 'v', VALUE_LEN - strlen(value_buf));
 
-                memcpy(SUBPACKAGE_KEY(package_buf,j), key, KEY_LEN);
-                memcpy(SUBPACKAGE_VALUE(package_buf,j), value, VALUE_LEN);
+                memcpy(SUBPACKAGE_KEY(package_buf,j), key_buf, KEY_LEN);
+                memcpy(SUBPACKAGE_VALUE(package_buf,j), value_buf, VALUE_LEN);
 
             }
 
@@ -250,7 +270,59 @@ unsigned char get_opcode(instructs inst){
 }
 
 void send_data(int tid){
-    //cout << thread::id() << " working " << endl;
-    cout << " working " << endl;
+
+    unsigned int connect_fd;
+    static struct sockaddr_in srv_addr;
+    //create  socket
+    connect_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if(connect_fd < 0) {
+        perror("cannot create communication socket");
+        return ;
+    }
+
+    srv_addr.sin_family = AF_INET;
+    srv_addr.sin_port = htons(base_port + tid);
+    srv_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+
+
+    //connect server;
+    if( connect(connect_fd, (struct sockaddr*)&srv_addr, sizeof(srv_addr)) == -1) {
+        perror("cannot connect to the server");
+        close(connect_fd);
+        return ;
+    }
+
+
+
+    unsigned long writenbytes = 0;
+    unsigned long offset = 0;
+    if(batch_num == 1){
+        for(int i = 0;i < kv_num_per_thread;i ++){
+            writenbytes = write(connect_fd, my_database + offset, NO_BATCH_PACKAGE_LEN);
+            if(writenbytes == NO_BATCH_PACKAGE_LEN){
+                offset += writenbytes;
+            }else{
+                perror("write error");
+                return;
+            }
+            assert(offset == TOTAL_HEAD_LEN(0) + TOTAL_BODY_LEN);
+        }
+    }else{
+        for(int i = 0;i < kv_num_per_thread / thread_num; i ++){
+            writenbytes = write(connect_fd, my_database + offset, BATCH_PACKAGE_LEN(batch_num));
+            if(writenbytes == BATCH_PACKAGE_LEN(batch_num)){
+                offset += writenbytes;
+            }else{
+                perror("write error");
+                return;
+            }
+            assert( offset == TOTAL_HEAD_LEN(0) + TOTAL_BODY_LEN);
+
+        }
+    }
+
+    printf("thread %d write bytes:%ld\n", tid, offset);
+    close(connect_fd);
+
 }
 

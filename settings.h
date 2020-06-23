@@ -2,12 +2,14 @@
 #define MULTIPORT_NETWORK_SETTINGS_H
 
 
-#define PORT_NUM 4
+#define PORT_NUM 1
 #define THREAD_NUM PORT_NUM
 
 #define PORT_BASE 8033
 
-#define INIT_RBUF_SIZE 100
+#define INIT_READ_BUF_SIZE 100
+
+#define MAX_CONN 1024
 
 #define ROUND_NUM 5
 
