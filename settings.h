@@ -2,7 +2,7 @@
 #define MULTIPORT_NETWORK_SETTINGS_H
 
 
-#define PORT_NUM 1
+#define PORT_NUM 4
 #define THREAD_NUM PORT_NUM
 
 #define PORT_BASE 8033
@@ -13,6 +13,6 @@
 
 #define ROUND_NUM 20
 
-#define TEST_WORK_STEP_SIZE 130
+#define TEST_WORK_STEP_SIZE 5*28
 
 #endif //MULTIPORT_NETWORK_SETTINGS_H

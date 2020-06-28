@@ -141,7 +141,7 @@ void process_func(CONNECTION *c){
                     //printf("reset and continue\n");
                 } else{
                     stop = true;
-                    printf("[%d:%d] stop and restart\n", c->sfd);
+                    printf("[%d:%d] stop and restart\n", c->thread_index,c->sfd);
                 }
                 break;
             }

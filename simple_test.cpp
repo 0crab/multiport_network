@@ -7,12 +7,7 @@
 using namespace std;
 
 int main(){
-    char s[8];
-    char b[8];
-    memset(s,'a', sizeof(s));
-    memset(b,'b', sizeof(b));
-    string str;
-  //  sprintf(s,"abcdefgh");
-    str=s;
-    cout<<s<<endl;
+    uint32_t a = 0x12345678;
+    uint16_t b = static_cast<uint16_t> (a);
+    printf("%x\n",b % 4);
 }

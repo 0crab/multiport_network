@@ -59,8 +59,6 @@ void *thread_func(void *threadid){
 
     send_data(tid,connect_fd);
 
-
-
 }
 
 int main(void)

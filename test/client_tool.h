@@ -3,6 +3,7 @@
 
 #include <stdlib.h>
 #include <string>
+#include "ThreadPool.h"
 
 using namespace std;
 
@@ -13,15 +14,35 @@ static enum protocol_mode{
 
 protocol_mode send_mode=BINARY;
 
-bool my_connection_init(string ip_addr,string port,protocol_mode=BINARY);
 
-bool my_get();
+typedef struct kv_obj{
+    char * key  ;
+    size_t  key_len;
+    char *value ;
+    size_t  value_len;
+}KV;
 
-bool my_getb();
 
-bool my_set();
 
-bool my_setb();
+class ClientWorker{
+
+public :
+
+    ClientWorker() {}
+
+    ClientWorker(const string target_ip, int port_base, int port_num, int worker_num);
+
+    void op_get(KV);
+
+    void op_set(KV);
+private :
+
+
+
+    vector<int> fds;
+    ThreadPool threadPool;
+
+};
 
 
 #endif

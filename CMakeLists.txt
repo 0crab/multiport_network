@@ -5,6 +5,8 @@ set(CMAKE_CXX_STANDARD 11)
 
 add_subdirectory(test)
 
+add_subdirectory(micro_test)
+
 link_libraries(pthread event event_core)
 
 add_executable(multiport_network server.cpp)
