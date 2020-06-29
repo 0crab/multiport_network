@@ -31,8 +31,8 @@ enum instructs {
 
 
 char *my_database;
-uint32_t g_offset = 0;
-uint32_t g_count = 0;
+uint64_t g_offset = 0;
+uint64_t g_count = 0;
 bool stop = false;
 bool clean = false;
 mutex g_mutex ;
@@ -52,6 +52,7 @@ int thread_num = 1;
 const string server_ip = "127.0.0.1";
 
 long * timelist;
+
 
 int main(int argc, char **argv) {
 
@@ -150,12 +151,14 @@ void con_database() {
             memset(value_buf + strlen(value_buf), c + 1, VALUE_LEN - strlen(value_buf));
             Pre_hash = (static_cast<uint8_t > (hash_func(key_buf, KEY_LEN))) % PORT_NUM;
 
+
             memcpy(PACKAGE_KEY(package_buf), key_buf, KEY_LEN);
             memcpy(PACKAGE_VALUE(package_buf), value_buf, VALUE_LEN);
             *(uint8_t *) HEAD_PRE_HASH(package_buf) = Pre_hash;
 
             memcpy(my_database + offset, package_buf, PACKAGE_LEN );
             offset += PACKAGE_LEN;
+
         }
     }
 
@@ -209,8 +212,6 @@ void data_dispatch(int tid){
         if(!end){
             for(int i = 0; i < WORK_OP_NUM; i++){
                 uint8_t pre_hash =*(uint8_t *) HEAD_PRE_HASH(GET_PACKAGE(work_buf,i));
-                uint8_t Pre = (static_cast<uint8_t > (hash_func(PACKAGE_KEY(GET_PACKAGE(work_buf,i)), KEY_LEN))) % PORT_NUM;
-                assert(pre_hash == Pre);
                 package_obj p;
                 p.package_ptr = GET_PACKAGE(work_buf,i);
                 p.package_len = PACKAGE_LEN;
@@ -219,8 +220,6 @@ void data_dispatch(int tid){
         }else{  //processing tail data
             for(int i = 0; i < KV_NUM - g_count; i++){
                 uint8_t pre_hash =*(uint8_t *) HEAD_PRE_HASH(GET_PACKAGE(work_buf,i));
-                uint8_t Pre = (static_cast<uint8_t > (hash_func(PACKAGE_KEY(GET_PACKAGE(work_buf,i)), KEY_LEN))) % PORT_NUM;
-                assert(pre_hash == Pre);
                 package_obj p;
                 p.package_ptr = GET_PACKAGE(work_buf,i);
                 p.package_len = PACKAGE_LEN;
