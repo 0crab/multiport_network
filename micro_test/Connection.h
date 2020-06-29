@@ -10,13 +10,15 @@ using namespace std;
 class Connection {
 public:
 
-    Connection():fd(-1), offset(0), op_count(0){};
+    Connection():fd(-1), offset(0), op_count(0), send_bytes(0){};
     ~Connection();
 
     void init(int con_id_,const string server_ip_);
     bool fetch_and_send(package_obj p);
+    void clean();
 
     int get_fd(){return this->fd;}
+    uint64_t get_send_bytes(){return this->send_bytes;}
 
 private:
     int con_id;
@@ -24,6 +26,7 @@ private:
     char * send_buf;
     uint32_t offset;
     uint32_t op_count;
+    uint64_t send_bytes;
     void connect_server(const string server_ip);
 };
 
@@ -72,12 +75,21 @@ bool Connection::fetch_and_send(package_obj p) {
     ++ op_count;
     if(op_count >= SEND_BATCH){
         write(this->fd, send_buf, offset); //The offset is equal to the amount of data
+        send_bytes += offset;
         op_count = 0;
         offset = 0;
         return true;
     }else{
         return false;
     }
+}
+
+void Connection::clean() {
+    write(this->fd, send_buf, offset); //The offset is equal to the amount of data
+    send_bytes += offset;
+    op_count = 0;
+    offset = 0;
+    printf("Connection %d send %lu bytes\n",con_id, send_bytes);
 }
 
 #endif //MULTIPORT_NETWORK_CONNECTION_H

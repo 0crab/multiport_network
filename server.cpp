@@ -10,6 +10,8 @@
 
 #include "server_define.h"
 
+
+
 using namespace std;
 
 
@@ -65,7 +67,7 @@ enum try_read_result try_read_network(CONNECTION *c) {
     if (c->working_buf != c->read_buf) {
         if (c->remaining_bytes != 0){
             memmove(c->read_buf, c->working_buf, c->remaining_bytes);
-            printf("remaining %d bytes move ; ",c->remaining_bytes);
+ //           printf("remaining %d bytes move ; ",c->remaining_bytes);
         } /* otherwise there's nothing to copy */
         c->working_buf = c->read_buf;
     }
@@ -74,7 +76,7 @@ enum try_read_result try_read_network(CONNECTION *c) {
 
     res = read(c->sfd, c->read_buf + c->remaining_bytes, avail);
 
-    printf("receive %d\n",res);
+//    printf("receive %d\n",res);
 
     if (res > 0) {
         gotdata = READ_DATA_RECEIVED;
@@ -114,7 +116,7 @@ void process_func(CONNECTION *c){
         switch (c->state) {
 
             case conn_read: {
-                printf("[%d:%d] conn_read : ",c->thread_index, c->sfd);
+        //        printf("[%d:%d] conn_read : ",c->thread_index, c->sfd);
                 try_read_result res =  try_read_network(c);
                 switch (res) {
                     case READ_NO_DATA_RECEIVED:
@@ -141,7 +143,7 @@ void process_func(CONNECTION *c){
                     //printf("reset and continue\n");
                 } else{
                     stop = true;
-                    printf("[%d:%d] stop and restart\n", c->thread_index,c->sfd);
+    //                printf("[%d:%d] stop and restart\n", c->thread_index,c->sfd);
                 }
                 break;
             }
@@ -159,7 +161,7 @@ void process_func(CONNECTION *c){
                 memcpy(work_buf, c->working_buf, TEST_WORK_STEP_SIZE);
                 c->worked_bytes += TEST_WORK_STEP_SIZE;
                 c->working_buf = c->read_buf + c->worked_bytes;
-                c->remaining_bytes =c->recv_bytes - c->worked_bytes;
+                c->remaining_bytes =c->total_bytes - c->worked_bytes;
 
                 c->bytes_processed_in_this_connection += TEST_WORK_STEP_SIZE;
 
@@ -169,7 +171,7 @@ void process_func(CONNECTION *c){
 
 
             case conn_waiting :{
-                printf("[%d:%d] conn_waiting\n",c->thread_index,c->sfd);
+      //          printf("[%d:%d] conn_waiting\n",c->thread_index,c->sfd);
                 state_jump(c->state, conn_read);
                 stop = true;
                 break;
@@ -192,7 +194,7 @@ void event_handler(const int fd, const short which, void *arg) {
 
     CONNECTION * c =(CONNECTION *)arg;
 
-    printf("[%d:%d] starting working,worked bytes:%d \n",c->thread_index, c->sfd, c->bytes_processed_in_this_connection);
+//    printf("[%d:%d] starting working,worked bytes:%d \n",c->thread_index, c->sfd, c->bytes_processed_in_this_connection);
 
     assert(c != NULL);
 

@@ -7,15 +7,17 @@
 #define KEY_LEN 8
 #define VALUE_LEN 8
 
-#define NUM 1000000
+#define NUM 10000
 #define KV_NUM (NUM * 26)
 
-#define DATA_SIZE ((KV_NUM * HEAD_LEN ) / 1000000000.0 )
+#define PACKAGE_LEN    (HEAD_LEN + KEY_LEN + VALUE_LEN)
+#define DATABASE_LEN    (KV_NUM * PACKAGE_LEN)
+
+#define DATA_SIZE ((KV_NUM * PACKAGE_LEN ) / 1000000000.0 )
 
 #define PORT_BASE 8033
 #define PORT_NUM 4
-
-#define PACKAGE_LEN    (HEAD_LEN + KEY_LEN + VALUE_LEN)
+#define CONNECTION_NUM PORT_NUM
 
 
 #define HEAD_MAGIC(buf)           (buf)
