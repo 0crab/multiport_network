@@ -11,10 +11,11 @@
 #include <assert.h>
 #include <mutex>
 #include "Connection.h"
-#include "jhash.h"
 #include "settings.h"
 #include "tracer.h"
+#include "hash.h"
 #include <vector>
+
 
 
 
@@ -81,6 +82,7 @@ int main(int argc, char **argv) {
         return -1;
     }
 
+    hash_init();
 
     con_database();
 
@@ -144,7 +146,7 @@ void con_database() {
             sprintf(value_buf, "%d", i);
             memset(key_buf + strlen(key_buf), c, VALUE_LEN - strlen(key_buf));
             memset(value_buf + strlen(value_buf), c + 1, VALUE_LEN - strlen(value_buf));
-            Pre_hash = (static_cast<uint8_t > (jenkins_hash(key_buf, KEY_LEN))) % PORT_NUM;
+            Pre_hash = (static_cast<uint8_t > (hash_func(key_buf, KEY_LEN))) % PORT_NUM;
 
             memcpy(PACKAGE_KEY(package_buf), key_buf, KEY_LEN);
             memcpy(PACKAGE_VALUE(package_buf), value_buf, VALUE_LEN);
