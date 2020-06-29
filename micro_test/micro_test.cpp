@@ -13,6 +13,7 @@
 #include "Connection.h"
 #include "jhash.h"
 #include "settings.h"
+#include "tracer.h"
 #include <vector>
 
 
@@ -49,6 +50,8 @@ int thread_num = 1;
 
 const string server_ip = "127.0.0.1";
 
+long * timelist;
+
 int main(int argc, char **argv) {
 
     string in_inst;
@@ -61,10 +64,11 @@ int main(int argc, char **argv) {
         printf("./micro_test <thread_num> <instruct> \n");
         return 0;
     }
-
+    timelist = (long *)calloc(thread_num, sizeof(long));
+    double data_size = (KV_NUM * PACKAGE_LEN ) / 1000000000.0 ;
     cout << "worker : " << thread_num << endl
          << "kv_num : " << KV_NUM << endl
-         << "data size : " << DATA_SIZE << "GB" << endl
+         << "data size : " << data_size << "GB" << endl
          << "port base : " << PORT_BASE << endl
          << "port num : " << PORT_NUM <<endl;
 
@@ -90,6 +94,13 @@ int main(int argc, char **argv) {
         threads[i].join();
         printf("thread %d stoped \n",i);
     }
+
+    long avg_runtime = 0;
+    for(int i = 0; i < thread_num; i++){
+        avg_runtime += timelist[i];
+    }
+    avg_runtime /= thread_num;
+    cout << "average runtime : " << avg_runtime << endl;
 
 
 }
@@ -163,6 +174,7 @@ unsigned char get_opcode(instructs inst){
 }
 
 void data_dispatch(int tid){
+    Tracer t;
 
     vector <Connection> cons(PORT_NUM);
 
@@ -171,6 +183,7 @@ void data_dispatch(int tid){
         if( cons[i].get_fd() == -1) return ;
     }
 
+    t.startTime();
     char * work_buf;
     bool end = false;
     while(!stop){
@@ -197,7 +210,7 @@ void data_dispatch(int tid){
                 p.package_len = PACKAGE_LEN;
                 cons[pre_hash].fetch_and_send(p);
             }
-        }else{
+        }else{  //processing tail data
             for(int i = 0; i < KV_NUM - g_count; i++){
                 uint8_t pre_hash =*(uint8_t *) HEAD_PRE_HASH(GET_PACKAGE(work_buf,i));
                 package_obj p;
@@ -216,6 +229,7 @@ void data_dispatch(int tid){
         g_totalbytes += cons[i].get_send_bytes();
     }
     printf("[%d] total send bytes :%lu\n",tid,g_totalbytes);
+    timelist[tid] += t.getRunTime();
 
 }
 
