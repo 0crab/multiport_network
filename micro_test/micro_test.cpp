@@ -66,7 +66,9 @@ int main(int argc, char **argv) {
         return 0;
     }
     timelist = (long *)calloc(thread_num, sizeof(long));
-    double data_size = (KV_NUM * PACKAGE_LEN ) / 1000000000.0 ;
+    double kv_n = KV_NUM;
+    double p_l = PACKAGE_LEN;
+    double data_size = (kv_n * p_l ) / 1000000000 ;
     cout << "worker : " << thread_num << endl
          << "kv_num : " << KV_NUM << endl
          << "data size : " << data_size << "GB" << endl

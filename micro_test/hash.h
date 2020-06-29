@@ -16,6 +16,4 @@ void hash_init(){
 }
 
 
-
-
 #endif //MULTIPORT_NETWORK_HASH_H
