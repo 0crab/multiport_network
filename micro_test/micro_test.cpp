@@ -31,6 +31,15 @@ enum instructs {
 
 
 char *my_database;
+
+typedef struct Send_info{
+    int thread_index;
+    int fd;
+    uint64_t send_bytes;
+} send_info;
+
+send_info ** info_matrix;
+
 uint64_t g_offset = 0;
 uint64_t g_count = 0;
 bool stop = false;
@@ -43,6 +52,8 @@ void con_database();
 unsigned char get_opcode(instructs inst);
 
 void data_dispatch(int tid);
+
+void show_send_info();
 
 
 instructs inst;
@@ -70,6 +81,12 @@ int main(int argc, char **argv) {
     }
 
     timelist = (long *)calloc(thread_num, sizeof(long));
+
+    info_matrix =(send_info **) calloc(thread_num , sizeof(send_info*));
+    for(int i = 0; i < port_num; i++){
+        info_matrix[i] = (send_info *) calloc(port_num, sizeof(send_info));
+    }
+
     double kv_n = KV_NUM;
     double p_l = PACKAGE_LEN;
     double data_size = (kv_n * p_l ) / 1000000000 ;
@@ -102,6 +119,8 @@ int main(int argc, char **argv) {
         threads[i].join();
         printf("thread %d stoped \n",i);
     }
+
+    show_send_info();
 
     long avg_runtime = 0;
     for(int i = 0; i < thread_num; i++){
@@ -234,6 +253,16 @@ void data_dispatch(int tid){
     for(int i = 0; i < CONNECTION_NUM; i++){
         cons[i].clean();
     }
+
+    for(int i = 0; i <= CONNECTION_NUM; i++){
+        send_info ts;
+        ts.thread_index = tid;
+        ts.fd = cons[i].get_fd();
+        ts.send_bytes = cons[i].get_send_bytes();
+        info_matrix[tid][i] = ts;
+    }
+
+
     uint64_t g_totalbytes = 0;
     for(int i = 0; i < CONNECTION_NUM; i++){
         g_totalbytes += cons[i].get_send_bytes();
@@ -243,3 +272,11 @@ void data_dispatch(int tid){
 
 }
 
+void show_send_info(){
+    for(int i = 0; i < thread_num; i++){
+        printf("thread %d :\n",i);
+        for(int j = 0; j < CONNECTION_NUM; j++){
+            printf("[%d,%d] : %lu\n",i,info_matrix[i][j].fd,info_matrix[i][j].send_bytes);
+        }
+    }
+}
