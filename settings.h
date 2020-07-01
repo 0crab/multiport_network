@@ -11,7 +11,7 @@ int port_num;
 
 #define INIT_READ_BUF_SIZE 1000
 
-#define MAX_CONN 5000
+#define MAX_CONN 65535
 
 #define ROUND_NUM 20
 

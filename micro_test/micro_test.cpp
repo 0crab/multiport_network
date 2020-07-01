@@ -254,7 +254,7 @@ void data_dispatch(int tid){
         cons[i].clean();
     }
 
-    for(int i = 0; i <= CONNECTION_NUM; i++){
+    for(int i = 0; i < CONNECTION_NUM; i++){
         send_info ts;
         ts.thread_index = tid;
         ts.fd = cons[i].get_fd();

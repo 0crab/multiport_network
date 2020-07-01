@@ -66,7 +66,7 @@ void Connection::connect_server(const string server_ip) {
 
     this->fd = connect_fd;
 
-    printf("connect to port %d \n",PORT_BASE + con_id);
+    //printf("connect to port %d \n",PORT_BASE + con_id);
 }
 
 bool Connection::fetch_and_send(package_obj p) {
