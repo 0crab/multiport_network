@@ -212,44 +212,60 @@ void data_dispatch(int tid){
         if( cons[i].get_fd() == -1) return ;
     }
 
-    t.startTime();
-    char * work_buf;
-    bool end = false;
-    while(!stop){
-        g_mutex.lock();
-        if(stop) {   //other thread changed the stop signal before lock
-            g_mutex.unlock();
-            break;
-        }
-        work_buf = my_database + g_offset;
-        if(WORK_OP_NUM >= KV_NUM - g_count){
-            end = true;
-            stop = true;
-        }else{
-            g_offset += WORK_LEN;
-            g_count += WORK_OP_NUM;
-        }
+   t.startTime();
+//    char * work_buf;
+//    bool end = false;
+//    while(!stop){
+//        g_mutex.lock();
+//        if(stop) {   //other thread changed the stop signal before lock
+//            g_mutex.unlock();
+//            break;
+//        }
+//        work_buf = my_database + g_offset;
+//        if(WORK_OP_NUM >= KV_NUM - g_count){
+//            end = true;
+//            stop = true;
+//        }else{
+//            g_offset += WORK_LEN;
+//            g_count += WORK_OP_NUM;
+//        }
+//
+//        g_mutex.unlock();
+//        if(!end){
+//            for(int i = 0; i < WORK_OP_NUM; i++){
+//                uint8_t pre_hash =*(uint8_t *) HEAD_PRE_HASH(GET_PACKAGE(work_buf,i));
+//                package_obj p;
+//                p.package_ptr = GET_PACKAGE(work_buf,i);
+//                p.package_len = PACKAGE_LEN;
+//                cons[pre_hash].fetch_and_send(p);
+//            }
+//        }else{  //processing tail data
+//            for(int i = 0; i < KV_NUM - g_count; i++){
+//                uint8_t pre_hash =*(uint8_t *) HEAD_PRE_HASH(GET_PACKAGE(work_buf,i));
+//                package_obj p;
+//                p.package_ptr = GET_PACKAGE(work_buf,i);
+//                p.package_len = PACKAGE_LEN;
+//                cons[pre_hash].fetch_and_send(p);
+//            }
+//        }
+//
+//    }
 
-        g_mutex.unlock();
-        if(!end){
-            for(int i = 0; i < WORK_OP_NUM; i++){
-                uint8_t pre_hash =*(uint8_t *) HEAD_PRE_HASH(GET_PACKAGE(work_buf,i));
-                package_obj p;
-                p.package_ptr = GET_PACKAGE(work_buf,i);
-                p.package_len = PACKAGE_LEN;
-                cons[pre_hash].fetch_and_send(p);
-            }
-        }else{  //processing tail data
-            for(int i = 0; i < KV_NUM - g_count; i++){
-                uint8_t pre_hash =*(uint8_t *) HEAD_PRE_HASH(GET_PACKAGE(work_buf,i));
-                package_obj p;
-                p.package_ptr = GET_PACKAGE(work_buf,i);
-                p.package_len = PACKAGE_LEN;
-                cons[pre_hash].fetch_and_send(p);
-            }
-        }
+#define GET_LOCAL_PACKAGE(i)  (my_database + local_offset + i * PACKAGE_LEN )
 
+    uint64_t local_send_num = KV_NUM / thread_num;
+
+    uint64_t local_offset = tid * local_send_num * PACKAGE_LEN;
+
+    for(int i = 0 ; i< local_send_num ; i ++){
+        uint8_t pre_hash =*(uint8_t *) HEAD_PRE_HASH(GET_LOCAL_PACKAGE(i));
+        package_obj p;
+        p.package_ptr = GET_LOCAL_PACKAGE(i);
+        p.package_len = PACKAGE_LEN;
+        cons[pre_hash].fetch_and_send(p);
     }
+
+
     for(int i = 0; i < CONNECTION_NUM; i++){
         cons[i].clean();
     }
@@ -268,6 +284,7 @@ void data_dispatch(int tid){
         g_totalbytes += cons[i].get_send_bytes();
     }
     printf("[%d] total send bytes :%lu\n",tid,g_totalbytes);
+
     timelist[tid] += t.getRunTime();
 
 }
