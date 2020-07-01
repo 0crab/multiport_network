@@ -11,35 +11,34 @@
 #include "server_define.h"
 
 
-
 using namespace std;
 
 
-void state_jump(conn_states & s_state,conn_states t_state){
+void state_jump(conn_states &s_state, conn_states t_state) {
     s_state = t_state;
 }
 
 
-void init_portlist(){
-    portList=(int *)(calloc(PORT_NUM, sizeof(int)));
-    for(int i=0;i<PORT_NUM;i++) portList[i]=PORT_BASE+i;
+void init_portlist() {
+    portList = (int *) (calloc(PORT_NUM, sizeof(int)));
+    for (int i = 0; i < PORT_NUM; i++) portList[i] = PORT_BASE + i;
 }
 
-void init_conns(){
+void init_conns() {
     int max_fds = MAX_CONN;
-    if ((conns = (CONNECTION **) calloc(max_fds, sizeof( CONNECTION *))) == NULL) {
+    if ((conns = (CONNECTION **) calloc(max_fds, sizeof(CONNECTION *))) == NULL) {
         fprintf(stderr, "Failed to allocate connection structures\n");
         /* This is unrecoverable so bail out early. */
         exit(1);
     }
 }
 
-void *worker(void * args){
-    int tid=*(int *)args;
+void *worker(void *args) {
+    int tid = *(int *) args;
 
-    printf("worker %d start \n",tid);
+    printf("worker %d start \n", tid);
 
-    THREAD_INFO *me =&threadInfoList[tid];
+    THREAD_INFO *me = &threadInfoList[tid];
 
     event_base_loop(me->base, 0);
 
@@ -49,7 +48,7 @@ void *worker(void * args){
 }
 
 
-void reset_cmd_handler(CONNECTION * c){
+void reset_cmd_handler(CONNECTION *c) {
 
     if (c->remaining_bytes > 0) {
         state_jump(c->state, conn_deal_with);
@@ -65,9 +64,9 @@ enum try_read_result try_read_network(CONNECTION *c) {
     assert(c != NULL);
 
     if (c->working_buf != c->read_buf) {
-        if (c->remaining_bytes != 0){
+        if (c->remaining_bytes != 0) {
             memmove(c->read_buf, c->working_buf, c->remaining_bytes);
- //           printf("remaining %d bytes move ; ",c->remaining_bytes);
+            //           printf("remaining %d bytes move ; ",c->remaining_bytes);
         } /* otherwise there's nothing to copy */
         c->working_buf = c->read_buf;
     }
@@ -106,18 +105,18 @@ void conn_close(CONNECTION *c) {
 }
 
 
-void process_func(CONNECTION *c){
-    bool stop=false;
+void process_func(CONNECTION *c) {
+    bool stop = false;
 
-    int inst_count=0;
+    int inst_count = 0;
 
-    while(!stop){
+    while (!stop) {
 
         switch (c->state) {
 
             case conn_read: {
-        //        printf("[%d:%d] conn_read : ",c->thread_index, c->sfd);
-                try_read_result res =  try_read_network(c);
+                //        printf("[%d:%d] conn_read : ",c->thread_index, c->sfd);
+                try_read_result res = try_read_network(c);
                 switch (res) {
                     case READ_NO_DATA_RECEIVED:
                         state_jump(c->state, conn_waiting);
@@ -136,21 +135,21 @@ void process_func(CONNECTION *c){
                 break;
             }
 
-            case conn_new_cmd :{
+            case conn_new_cmd : {
                 //printf("conn_new_cmd :");
-                if (++ inst_count < ROUND_NUM){
+                if (++inst_count < ROUND_NUM) {
                     reset_cmd_handler(c);
                     //printf("reset and continue\n");
-                } else{
+                } else {
                     stop = true;
-    //                printf("[%d:%d] stop and restart\n", c->thread_index,c->sfd);
+                    //                printf("[%d:%d] stop and restart\n", c->thread_index,c->sfd);
                 }
                 break;
             }
 
 
             case conn_deal_with : {
-                if(c->remaining_bytes < TEST_WORK_STEP_SIZE){
+                if (c->remaining_bytes < TEST_WORK_STEP_SIZE) {
                     state_jump(c->state, conn_waiting);
                     break;
                 }
@@ -161,7 +160,7 @@ void process_func(CONNECTION *c){
                 memcpy(work_buf, c->working_buf, TEST_WORK_STEP_SIZE);
                 c->worked_bytes += TEST_WORK_STEP_SIZE;
                 c->working_buf = c->read_buf + c->worked_bytes;
-                c->remaining_bytes =c->total_bytes - c->worked_bytes;
+                c->remaining_bytes = c->total_bytes - c->worked_bytes;
 
                 c->bytes_processed_in_this_connection += TEST_WORK_STEP_SIZE;
 
@@ -170,15 +169,15 @@ void process_func(CONNECTION *c){
             }
 
 
-            case conn_waiting :{
-      //          printf("[%d:%d] conn_waiting\n",c->thread_index,c->sfd);
+            case conn_waiting : {
+                //          printf("[%d:%d] conn_waiting\n",c->thread_index,c->sfd);
                 state_jump(c->state, conn_read);
                 stop = true;
                 break;
             }
 
-            case conn_closing :{
-                printf("[%d:%d] conn_closing ,processed bytes: %lu \n",\
+            case conn_closing : {
+                printf("[%d:%d] conn_closing ,processed bytes: %lu \n", \
                         c->thread_index, c->sfd, c->bytes_processed_in_this_connection);
                 conn_close(c);
                 stop = true;
@@ -192,7 +191,7 @@ void process_func(CONNECTION *c){
 void event_handler(const int fd, const short which, void *arg) {
 
 
-    CONNECTION * c =(CONNECTION *)arg;
+    CONNECTION *c = (CONNECTION *) arg;
 
 //    printf("[%d:%d] starting working,worked bytes:%d \n",c->thread_index, c->sfd, c->bytes_processed_in_this_connection);
 
@@ -210,20 +209,20 @@ void event_handler(const int fd, const short which, void *arg) {
     return;
 }
 
-void conn_new(int sfd, struct event_base *base ,int thread_index){
+void conn_new(int sfd, struct event_base *base, int thread_index) {
     CONNECTION *c;
 
     assert(sfd >= 0 && sfd < MAX_CONN);
 
     c = conns[sfd];
 
-    if(c == NULL){
+    if (c == NULL) {
         if (!(c = (CONNECTION *) calloc(1, sizeof(CONNECTION)))) {
             fprintf(stderr, "Failed to allocate connection object\n");
-            return ;
+            return;
         }
         c->read_buf_size = INIT_READ_BUF_SIZE;
-        c->read_buf = (char *)malloc(c->read_buf_size * sizeof(char));
+        c->read_buf = (char *) malloc(c->read_buf_size * sizeof(char));
 
     }
 
@@ -245,17 +244,17 @@ void conn_new(int sfd, struct event_base *base ,int thread_index){
 
     if (event_add(&c->event, 0) == -1) {
         perror("event_add");
-        return ;
+        return;
     }
 
 }
 
-void thread_libevent_process(int fd, short which, void *arg){
+void thread_libevent_process(int fd, short which, void *arg) {
 
-    THREAD_INFO *me =(THREAD_INFO *) arg;
-    CONN_ITEM *citem=NULL;
+    THREAD_INFO *me = (THREAD_INFO *) arg;
+    CONN_ITEM *citem = NULL;
 
-   // printf("thread %d awaked \n",me->thread_index);
+    // printf("thread %d awaked \n",me->thread_index);
     char buf[1];
 
     if (read(fd, buf, 1) != 1) {
@@ -266,21 +265,21 @@ void thread_libevent_process(int fd, short which, void *arg){
     switch (buf[0]) {
         case 'c':
             pthread_mutex_lock(&me->conqlock);
-            if(!me->connQueueList->empty()){
-                citem= me->connQueueList->front();
+            if (!me->connQueueList->empty()) {
+                citem = me->connQueueList->front();
                 me->connQueueList->pop();
             }
             pthread_mutex_unlock(&me->conqlock);
-            if (citem==NULL) {
+            if (citem == NULL) {
                 break;
             }
             switch (citem->mode) {
-                case queue_new_conn:{
-                    conn_new(citem->sfd,me->base,me->thread_index);
+                case queue_new_conn: {
+                    conn_new(citem->sfd, me->base, me->thread_index);
                     break;
                 }
 
-                case queue_redispatch:{
+                case queue_redispatch: {
                     //conn_worker_readd(citem);
                     break;
                 }
@@ -297,8 +296,8 @@ void thread_libevent_process(int fd, short which, void *arg){
 }
 
 
-void setup_worker(int i){
-    THREAD_INFO * me=&threadInfoList[i];
+void setup_worker(int i) {
+    THREAD_INFO *me = &threadInfoList[i];
 
     struct event_config *ev_config;
     ev_config = event_config_new();
@@ -307,7 +306,7 @@ void setup_worker(int i){
     event_config_free(ev_config);
 
 
-    if (! me->base) {
+    if (!me->base) {
         fprintf(stderr, "Can't allocate event base\n");
         exit(1);
     }
@@ -340,7 +339,7 @@ void init_workers() {
 
         threadInfoList[i].thread_index = i;
 
-        threadInfoList[i].connQueueList=new queue<CONN_ITEM *>;
+        threadInfoList[i].connQueueList = new queue<CONN_ITEM *>;
 
 
         setup_worker(i);
@@ -349,9 +348,9 @@ void init_workers() {
     int ret;
     for (int i = 0; i < THREAD_NUM; i++) {
         if ((ret = pthread_create(&threadInfoList[i].thread_id,
-                                    NULL,
-                                    worker,
-                                    (void *)&threadInfoList[i].thread_index) )!= 0) {
+                                  NULL,
+                                  worker,
+                                  (void *) &threadInfoList[i].thread_index)) != 0) {
             fprintf(stderr, "Can't create thread: %s\n",
                     strerror(ret));
             exit(1);
@@ -362,9 +361,8 @@ void init_workers() {
 }
 
 
-
-void conn_dispatch(evutil_socket_t listener, short event, void * args) {
-    int port_index = *(int *)args;
+void conn_dispatch(evutil_socket_t listener, short event, void *args) {
+    int port_index = *(int *) args;
     //printf("listerner :%d  port %d\n", listener, portList[port_index]);
 
     struct sockaddr_storage ss;
@@ -390,12 +388,22 @@ void conn_dispatch(evutil_socket_t listener, short event, void * args) {
         if (write(citem->thread->notify_send_fd, buf, 1) != 1) {
             perror("Writing to thread notify pipe");
         }
-       // printf("awake thread %d\n", port_index);
+        // printf("awake thread %d\n", port_index);
     }
 }
 
 
-int main() {
+int main(int argc, char **argv) {
+
+    if (argc == 2) {
+        port_num = atol(argv[1]);
+
+        // batch_num = atol(argv[3]); //not used
+
+    } else {
+        printf("./multiport_network  <port_num> \n");
+        return 0;
+    }
 
 
     init_portlist();
@@ -410,7 +418,7 @@ int main() {
     if (!base)
         return -1; /*XXXerr*/
 
-    for(int i=0;i<PORT_NUM;i++){
+    for (int i = 0; i < PORT_NUM; i++) {
         evutil_socket_t listener;
         struct event *listener_event;
 
@@ -423,12 +431,12 @@ int main() {
         evutil_make_socket_nonblocking(listener);
 
 
-        if (bind(listener, (struct sockaddr*)&sin, sizeof(sin)) < 0) {
+        if (bind(listener, (struct sockaddr *) &sin, sizeof(sin)) < 0) {
             perror("bind");
             return -1;
         }
 
-        if (listen(listener, 16)<0) {
+        if (listen(listener, 16) < 0) {
             perror("listen");
             return -1;
         }

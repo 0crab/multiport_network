@@ -16,8 +16,10 @@
 //#define DATA_SIZE ((KV_NUM * PACKAGE_LEN ) / 1000000000.0 )
 
 #define PORT_BASE 8033
-#define PORT_NUM 4
-#define CONNECTION_NUM PORT_NUM
+
+int port_num;
+//#define PORT_NUM 4
+#define CONNECTION_NUM port_num
 
 
 #define HEAD_MAGIC(buf)           (buf)
@@ -32,7 +34,7 @@
 
 #define SEND_BATCH 100
 
-#define WORK_OP_NUM (SEND_BATCH * PORT_NUM)
+#define WORK_OP_NUM (SEND_BATCH * port_num)
 #define WORK_LEN (WORK_OP_NUM * PACKAGE_LEN )
 
 #define GET_PACKAGE(buf,i)  (buf + i * PACKAGE_LEN)

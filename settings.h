@@ -1,9 +1,11 @@
 #ifndef MULTIPORT_NETWORK_SETTINGS_H
 #define MULTIPORT_NETWORK_SETTINGS_H
 
+int port_num;
 
-#define PORT_NUM 4
-#define THREAD_NUM PORT_NUM
+#define PORT_NUM port_num
+
+#define THREAD_NUM port_num
 
 #define PORT_BASE 8033
 

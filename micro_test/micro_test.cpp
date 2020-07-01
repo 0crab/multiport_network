@@ -54,18 +54,21 @@ const string server_ip = "127.0.0.1";
 long * timelist;
 
 
+
 int main(int argc, char **argv) {
 
     string in_inst;
-    if (argc == 3) {
+    if (argc == 4) {
         thread_num = atol(argv[1]);
-        in_inst = string(argv[2]);
+        port_num = atol(argv[2]);
+        in_inst = string(argv[3]);
        // batch_num = atol(argv[3]); //not used
 
     } else {
-        printf("./micro_test <thread_num> <instruct> \n");
+        printf("./micro_test <thread_num>  <port_num> <instruct> \n");
         return 0;
     }
+
     timelist = (long *)calloc(thread_num, sizeof(long));
     double kv_n = KV_NUM;
     double p_l = PACKAGE_LEN;
@@ -74,7 +77,7 @@ int main(int argc, char **argv) {
          << "kv_num : " << KV_NUM << endl
          << "data size : " << data_size << "GB" << endl
          << "port base : " << PORT_BASE << endl
-         << "port num : " << PORT_NUM <<endl;
+         << "port num : " << port_num <<endl;
 
     if (in_inst == "get") inst = GET;
     else if (in_inst == "getb") inst = GETB;
@@ -149,7 +152,7 @@ void con_database() {
             sprintf(value_buf, "%d", i);
             memset(key_buf + strlen(key_buf), c, VALUE_LEN - strlen(key_buf));
             memset(value_buf + strlen(value_buf), c + 1, VALUE_LEN - strlen(value_buf));
-            Pre_hash = (static_cast<uint8_t > (hash_func(key_buf, KEY_LEN))) % PORT_NUM;
+            Pre_hash = static_cast<uint8_t > ((hash_func(key_buf, KEY_LEN)) % port_num);
 
 
             memcpy(PACKAGE_KEY(package_buf), key_buf, KEY_LEN);
@@ -183,9 +186,9 @@ unsigned char get_opcode(instructs inst){
 void data_dispatch(int tid){
     Tracer t;
 
-    vector <Connection> cons(PORT_NUM);
+    vector <Connection> cons(port_num);
 
-    for(int i = 0; i < PORT_NUM; i++){
+    for(int i = 0; i < port_num; i++){
         cons[i].init(i,server_ip);
         if( cons[i].get_fd() == -1) return ;
     }
