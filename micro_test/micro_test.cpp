@@ -120,7 +120,7 @@ int main(int argc, char **argv) {
         printf("thread %d stoped \n",i);
     }
 
-    show_send_info();
+//    show_send_info();
 
     long avg_runtime = 0;
     for(int i = 0; i < thread_num; i++){
@@ -270,13 +270,13 @@ void data_dispatch(int tid){
         cons[i].clean();
     }
 
-    for(int i = 0; i < CONNECTION_NUM; i++){
-        send_info ts;
-        ts.thread_index = tid;
-        ts.fd = cons[i].get_fd();
-        ts.send_bytes = cons[i].get_send_bytes();
-        info_matrix[tid][i] = ts;
-    }
+//    for(int i = 0; i < CONNECTION_NUM; i++){
+//        send_info ts;
+//        ts.thread_index = tid;
+//        ts.fd = cons[i].get_fd();
+//        ts.send_bytes = cons[i].get_send_bytes();
+//        info_matrix[tid][i] = ts;
+//    }
 
 
     uint64_t g_totalbytes = 0;
