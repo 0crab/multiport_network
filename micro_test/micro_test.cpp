@@ -250,6 +250,11 @@ void data_dispatch(int tid){
         }
 
     }
+
+    for(int i = 0; i < CONNECTION_NUM; i++){
+        cons[i].clean();
+    }
+
 /*
 #define GET_LOCAL_PACKAGE(i)  (my_database + local_offset + i * PACKAGE_LEN )
 
