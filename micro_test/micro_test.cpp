@@ -90,11 +90,10 @@ int main(int argc, char **argv) {
     double kv_n = KV_NUM;
     double p_l = PACKAGE_LEN;
     double data_size = (kv_n * p_l ) / 1000000000 ;
-    cout << "worker : " << thread_num << endl
+    cout << "worker : " << thread_num <<  "\tport num : " << port_num << endl
          << "kv_num : " << KV_NUM << endl
          << "data size : " << data_size << "GB" << endl
-         << "port base : " << PORT_BASE << endl
-         << "port num : " << port_num <<endl;
+         << "port base : " << PORT_BASE << endl;
 
     if (in_inst == "get") inst = GET;
     else if (in_inst == "getb") inst = GETB;
@@ -112,12 +111,12 @@ int main(int argc, char **argv) {
     vector<thread> threads;
 
     for(int i = 0;i < thread_num; i ++){
-        printf("creating thread %d\n",i);
+        //printf("creating thread %d\n",i);
         threads.push_back(thread(data_dispatch,i));
     }
     for(int i = 0; i < thread_num; i++){
         threads[i].join();
-        printf("thread %d stoped \n",i);
+        //printf("thread %d stoped \n",i);
     }
 
 //    show_send_info();
@@ -127,7 +126,7 @@ int main(int argc, char **argv) {
         avg_runtime += timelist[i];
     }
     avg_runtime /= thread_num;
-    cout << "average runtime : " << avg_runtime << endl;
+    cout << "\n ** average runtime : " << avg_runtime << endl;
 
 
 }
@@ -290,7 +289,7 @@ void data_dispatch(int tid){
     for(int i = 0; i < CONNECTION_NUM; i++){
         g_totalbytes += cons[i].get_send_bytes();
     }
-    printf("[%d] total send bytes :%lu\n",tid,g_totalbytes);
+//    printf("[%d] total send bytes :%lu\n",tid,g_totalbytes);
 
     timelist[tid] += t.getRunTime();
 

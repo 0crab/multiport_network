@@ -37,7 +37,7 @@ void init_conns() {
 void *worker(void *args) {
     int tid = *(int *) args;
 
-    printf("worker %d start \n", tid);
+//    printf("worker %d start \n", tid);
 
     THREAD_INFO *me = &threadInfoList[tid];
 
@@ -180,7 +180,7 @@ void process_func(CONNECTION *c) {
             }
 
             case conn_closing : {
-                printf("[%d:%d] conn_closing ,processed bytes: %lu \n", \
+            //    printf("[%d:%d] conn_closing ,processed bytes: %lu \n", \
                         c->thread_index, c->sfd, c->bytes_processed_in_this_connection);
                 conn_close(c);
                 stop = true;
@@ -427,6 +427,7 @@ int main(int argc, char **argv) {
         return 0;
     }
 
+    cout <<" port_num : " << port_num << endl;
 
     init_portlist();
 
@@ -434,13 +435,13 @@ int main(int argc, char **argv) {
 
     init_workers();
 
-    int i;
-    const char **methods = event_get_supported_methods();
-    printf("Starting Libevent %s.  Available methods are:\n",
-           event_get_version());
-    for (i=0; methods[i] != NULL; ++i) {
-        printf("    %s\n", methods[i]);
-    }
+//    int i;
+//    const char **methods = event_get_supported_methods();
+//    printf("Starting Libevent %s.  Available methods are:\n",
+//           event_get_version());
+//    for (i=0; methods[i] != NULL; ++i) {
+//        printf("    %s\n", methods[i]);
+//    }
 
     struct event_base *base;
     base = event_base_new();
