@@ -6,6 +6,7 @@
 #include <netinet/in.h>
 #include <pthread.h>
 #include <assert.h>
+#include <fcntl.h>
 
 
 #include "server_define.h"
@@ -87,10 +88,12 @@ enum try_read_result try_read_network(CONNECTION *c) {
     if (res == 0) {
         return READ_ERROR;
     }
-    if (res == -1) {
-        return READ_ERROR;
-    }
 
+    if (res == -1) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            return gotdata;
+        }
+    }
     return gotdata;
 }
 
@@ -130,7 +133,7 @@ void process_func(CONNECTION *c) {
                     case READ_MEMORY_ERROR: /* Failed to allocate more memory */
                         /* State already set by try_read_network */
                         perror("mem error");
-                        break;
+                        exit(1);
                 }
                 break;
             }
@@ -368,28 +371,47 @@ void conn_dispatch(evutil_socket_t listener, short event, void *args) {
     struct sockaddr_storage ss;
     socklen_t slen = sizeof(ss);
     int fd = accept(listener, (struct sockaddr *) &ss, &slen);
-    if (fd < 0) {
-        perror("accept");
-    } else if (fd > FD_SETSIZE) {
-        close(fd);
-    } else {
-        CONN_ITEM *citem = (CONN_ITEM *) malloc(sizeof(CONN_ITEM));
-        citem->sfd = fd;
-        citem->thread = &threadInfoList[port_index];
-        citem->mode = queue_new_conn;
 
-        pthread_mutex_lock(&citem->thread->conqlock);
-        citem->thread->connQueueList->push(citem);
-        //printf("thread %d push citem, now cq size:%d\n",port_index,citem->thread->connQueueList->size());
-        pthread_mutex_unlock(&citem->thread->conqlock);
-
-        char buf[1];
-        buf[0] = 'c';
-        if (write(citem->thread->notify_send_fd, buf, 1) != 1) {
-            perror("Writing to thread notify pipe");
+    if (fd == -1) {
+        perror("accept()");
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            /* these are transient, so don't log anything */
+            return;
+        } else if (errno == EMFILE) {
+            fprintf(stderr, "Too many open connections\n");
+            exit(1);
+        } else {
+            perror("accept()");
+            return;
         }
-        // printf("awake thread %d\n", port_index);
     }
+
+    if (fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK) < 0) {
+        perror("setting O_NONBLOCK");
+        close(fd);
+        return ;
+    }
+
+    assert(fd > 2);
+
+
+    CONN_ITEM *citem = (CONN_ITEM *) malloc(sizeof(CONN_ITEM));
+    citem->sfd = fd;
+    citem->thread = &threadInfoList[port_index];
+    citem->mode = queue_new_conn;
+
+    pthread_mutex_lock(&citem->thread->conqlock);
+    citem->thread->connQueueList->push(citem);
+    //printf("thread %d push citem, now cq size:%d\n",port_index,citem->thread->connQueueList->size());
+    pthread_mutex_unlock(&citem->thread->conqlock);
+
+    char buf[1];
+    buf[0] = 'c';
+    if (write(citem->thread->notify_send_fd, buf, 1) != 1) {
+        perror("Writing to thread notify pipe");
+    }
+    // printf("awake thread %d\n", port_index);
+
 }
 
 
@@ -412,6 +434,13 @@ int main(int argc, char **argv) {
 
     init_workers();
 
+    int i;
+    const char **methods = event_get_supported_methods();
+    printf("Starting Libevent %s.  Available methods are:\n",
+           event_get_version());
+    for (i=0; methods[i] != NULL; ++i) {
+        printf("    %s\n", methods[i]);
+    }
 
     struct event_base *base;
     base = event_base_new();

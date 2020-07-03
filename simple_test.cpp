@@ -3,11 +3,21 @@
 #include <iostream>
 #include <stdlib.h>
 #include <string.h>
+#include <iostream>
 
 using namespace std;
 
+int m[65][65];
+
 int main(){
-    uint32_t a = 0x12345678;
-    uint16_t b = static_cast<uint16_t> (a);
-    printf("%x\n",b % 4);
+
+    for(int i = 0; i <= 32; i++){
+        for(int j = 0; j <=32; j++){
+            cout <<  i * j << "\t\t";
+        }
+        cout << endl;
+    }
+
+
+
 }
