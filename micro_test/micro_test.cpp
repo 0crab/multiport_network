@@ -42,6 +42,7 @@ send_info ** info_matrix;
 
 uint64_t g_offset = 0;
 uint64_t g_count = 0;
+int round = ROUND_SET;
 bool stop = false;
 bool clean = false;
 mutex g_mutex ;
@@ -89,7 +90,7 @@ int main(int argc, char **argv) {
 
     double kv_n = KV_NUM;
     double p_l = PACKAGE_LEN;
-    double data_size = (kv_n * p_l ) / 1000000000 ;
+    double data_size = (kv_n * p_l * ROUND_SET) / 1000000000 ;
     cout << "worker : " << thread_num <<  "\tport num : " << port_num << endl
          << "kv_num : " << KV_NUM << endl
          << "data size : " << data_size << "GB" << endl
@@ -211,10 +212,12 @@ void data_dispatch(int tid){
         if( cons[i].get_fd() == -1) return ;
     }
 
-   t.startTime();
+
+    t.startTime();
     char * work_buf;
     bool end = false;
     while(!stop){
+        int local_count;
         g_mutex.lock();
         if(stop) {   //other thread changed the stop signal before lock
             g_mutex.unlock();
@@ -222,9 +225,18 @@ void data_dispatch(int tid){
         }
         work_buf = my_database + g_offset;
         if(WORK_OP_NUM >= KV_NUM - g_count){
+            printf("round %d end,g_count %d\n",round,g_count);
             end = true;
-            stop = true;
+            local_count = g_count;
+            if(--round <= 0){
+                stop =true;
+            }else{
+                stop = false;
+                g_count = 0;  //for the next round
+                g_offset = 0;
+            }
         }else{
+            end = false;
             g_offset += WORK_LEN;
             g_count += WORK_OP_NUM;
         }
@@ -239,7 +251,7 @@ void data_dispatch(int tid){
                 cons[pre_hash].fetch_and_send(p);
             }
         }else{  //processing tail data
-            for(int i = 0; i < KV_NUM - g_count; i++){
+            for(int i = 0; i < KV_NUM - local_count; i++){
                 uint8_t pre_hash =*(uint8_t *) HEAD_PRE_HASH(GET_PACKAGE(work_buf,i));
                 package_obj p;
                 p.package_ptr = GET_PACKAGE(work_buf,i);
@@ -253,6 +265,7 @@ void data_dispatch(int tid){
     for(int i = 0; i < CONNECTION_NUM; i++){
         cons[i].clean();
     }
+
 
 /*
 #define GET_LOCAL_PACKAGE(i)  (my_database + local_offset + i * PACKAGE_LEN )

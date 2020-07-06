@@ -180,7 +180,7 @@ void process_func(CONNECTION *c) {
             }
 
             case conn_closing : {
-            //    printf("[%d:%d] conn_closing ,processed bytes: %lu \n", \
+                printf("[%d:%d] conn_closing ,processed bytes: %lu \n", \
                         c->thread_index, c->sfd, c->bytes_processed_in_this_connection);
                 conn_close(c);
                 stop = true;

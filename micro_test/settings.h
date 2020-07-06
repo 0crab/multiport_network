@@ -39,6 +39,8 @@ int port_num;
 
 #define GET_PACKAGE(buf,i)  (buf + i * PACKAGE_LEN)
 
+#define ROUND_SET 4
+
 #define DATABASE_LEN KV_NUM * PACKAGE_LEN
 
 typedef struct Package_obj{

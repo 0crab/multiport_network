@@ -89,7 +89,7 @@ void Connection::clean() {
     send_bytes += offset;
     op_count = 0;
     offset = 0;
-    //printf("Connection %d send %lu bytes\n",con_id, send_bytes);
+    printf("Connection %d send %lu bytes\n",con_id, send_bytes);
 }
 
 #endif //MULTIPORT_NETWORK_CONNECTION_H
