@@ -9,6 +9,6 @@ add_subdirectory(micro_test)
 
 link_libraries(pthread event event_core)
 
-add_executable(multiport_network server.cpp)
+add_executable(multiport_network server.cpp kvobj.cpp assoc.cpp)
 
-add_executable(simple_test simple_test.cpp)
+add_executable(simple_test simple_test.cpp kvobj.cpp)

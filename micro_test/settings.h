@@ -7,7 +7,7 @@
 #define KEY_LEN 8
 #define VALUE_LEN 8
 
-#define NUM 10000
+#define NUM 100
 #define KV_NUM (NUM * 26)
 
 #define PACKAGE_LEN    (HEAD_LEN + KEY_LEN + VALUE_LEN)
@@ -39,7 +39,7 @@ int port_num;
 
 #define GET_PACKAGE(buf,i)  (buf + i * PACKAGE_LEN)
 
-#define ROUND_SET 4
+#define ROUND_SET 1
 
 #define DATABASE_LEN KV_NUM * PACKAGE_LEN
 

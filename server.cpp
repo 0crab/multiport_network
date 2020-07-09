@@ -10,14 +10,123 @@
 
 
 #include "server_define.h"
+#include "assoc.h"
 
 
 using namespace std;
 
 
-void state_jump(conn_states &s_state, conn_states t_state) {
+void conn_state_jump(conn_states &s_state, conn_states t_state) {
     s_state = t_state;
 }
+void work_state_jump(work_states &s_state, work_states t_state) {
+    s_state = t_state;
+}
+
+
+static int try_read_key_value(CONNECTION * c){
+    switch(c->cmd){
+
+        case PROTOCOL_BINARY_CMD_SET : {
+            uint32_t kvbytes = c->binary_header.totalbodylen;
+            if( c->remaining_bytes < kvbytes)
+                return 0;
+
+            c->key = std::string(c->working_buf, c->binary_header.keylen);
+            c->value = std::string(c->working_buf + c->binary_header.keylen, kvbytes - c->binary_header.keylen);
+
+            c->remaining_bytes -= kvbytes;
+            c->working_buf += kvbytes;
+            c->worked_bytes += kvbytes;
+
+            work_state_jump(c->work_state, store_kvobj);
+            break;
+        }
+        case PROTOCOL_BINARY_CMD_GET : {
+            break;
+        }
+        default:
+            perror("binary instruction error");
+            return -1;
+    }
+    return 1;
+}
+
+
+static void dispatch_bin_command(CONNECTION *c) {
+
+
+    uint16_t keylen = c->binary_header.keylen;
+    uint32_t bodylen = c->binary_header.totalbodylen;
+
+    if (keylen > bodylen ) {
+        perror("PROTOCOL_BINARY_RESPONSE_UNKNOWN_COMMAND");
+        conn_state_jump(c->conn_state,conn_closing);
+        return;
+    }
+
+    switch (c->cmd) {
+
+        case PROTOCOL_BINARY_CMD_SET: /* FALLTHROUGH */
+            if (keylen != 0 && bodylen >= (keylen + 8)) {
+              work_state_jump(c->work_state,read_key_value);
+            } else {
+                perror("PROTOCOL_BINARY_CMD_SET_ERROR");
+                return;
+            }
+            break;
+        case PROTOCOL_BINARY_CMD_GET:
+            if (keylen != 0 && bodylen == keylen ) {
+                work_state_jump(c->work_state,read_key_value);
+            } else {
+                perror("PROTOCOL_BINARY_CMD_SET_ERROR");
+                return;
+            }
+            break;
+        default:
+            perror("PROTOCOL_BINARY_RESPONSE_UNKNOWN_COMMAND");
+    }
+}
+
+
+
+
+//try parse binary header
+static int try_read_head_binary(CONNECTION *c) {
+    /* Do we have the complete packet header? */
+    if (c->remaining_bytes < sizeof(c->binary_header)) {
+        /* need more data! */
+        return 0;
+    }
+
+    protocol_binary_request_header *req;
+    req = (protocol_binary_request_header *) c->working_buf;
+
+    c->binary_header.magic = req->magic;
+    c->binary_header.opcode = req->opcode;
+    c->binary_header.keylen = ntohs(req->keylen);
+    c->binary_header.batchnum = ntohs(req->batchnum);
+    c->binary_header.prehash = (req->prehash);
+    c->binary_header.totalbodylen = ntohl(req->totalbodylen);
+
+
+
+    c->cmd = c->binary_header.opcode;
+
+
+    //set next working state in this function
+    dispatch_bin_command(c);
+
+    c->remaining_bytes -= sizeof(c->binary_header);
+    c->worked_bytes += sizeof(c->binary_header);
+    c->working_buf += sizeof(c->binary_header);//working buf move
+
+    return 1;
+}
+
+
+
+
 
 
 void init_portlist() {
@@ -52,9 +161,9 @@ void *worker(void *args) {
 void reset_cmd_handler(CONNECTION *c) {
 
     if (c->remaining_bytes > 0) {
-        state_jump(c->state, conn_deal_with);
+        conn_state_jump(c->conn_state, conn_deal_with);
     } else {
-        state_jump(c->state, conn_waiting);
+        conn_state_jump(c->conn_state, conn_waiting);
     }
 }
 
@@ -115,20 +224,20 @@ void process_func(CONNECTION *c) {
 
     while (!stop) {
 
-        switch (c->state) {
+        switch (c->conn_state) {
 
             case conn_read: {
                 //        printf("[%d:%d] conn_read : ",c->thread_index, c->sfd);
                 try_read_result res = try_read_network(c);
                 switch (res) {
                     case READ_NO_DATA_RECEIVED:
-                        state_jump(c->state, conn_waiting);
+                        conn_state_jump(c->conn_state, conn_waiting);
                         break;
                     case READ_DATA_RECEIVED:
-                        state_jump(c->state, conn_deal_with);
+                        conn_state_jump(c->conn_state, conn_deal_with);
                         break;
                     case READ_ERROR:
-                        state_jump(c->state, conn_closing);
+                        conn_state_jump(c->conn_state, conn_closing);
                         break;
                     case READ_MEMORY_ERROR: /* Failed to allocate more memory */
                         /* State already set by try_read_network */
@@ -152,29 +261,48 @@ void process_func(CONNECTION *c) {
 
 
             case conn_deal_with : {
-                if (c->remaining_bytes < TEST_WORK_STEP_SIZE) {
-                    state_jump(c->state, conn_waiting);
-                    break;
+
+                switch(c->work_state){
+
+                    case parse_head : {
+                        if ((unsigned char) c->working_buf[0] == (unsigned char) PROTOCOL_BINARY_REQ) {
+                            //binary_protocol
+                            if(!try_read_head_binary(c)){
+                                conn_state_jump(c->conn_state,conn_waiting);
+                            }
+                        }
+                        break;
+                    }
+
+                    case read_key_value : {
+                        //work state change in this function
+                        int re = try_read_key_value(c);
+                        if(re == 0){
+                            //wait for more data
+                            conn_state_jump(c->conn_state, conn_waiting);
+                        }else if(re == -1){
+                            //error, close connection
+                            conn_state_jump(c->conn_state, conn_closing);
+                        }
+                        break;
+                    }
+                    case store_kvobj : {
+                        std::cout <<"store "<< c->key << ":" << c->value << endl;
+                        assoc_upsert(c->key, c->value);
+                        c->bytes_processed_in_this_connection += sizeof(c->binary_header) + c->binary_header.totalbodylen;
+                        work_state_jump(c->work_state, parse_head);
+                        conn_state_jump(c->conn_state, conn_new_cmd);
+                        break;
+                    }
                 }
 
-                //printf("conn_deal_with: ");
-                //working with data 10 bytes every time
-                char work_buf[TEST_WORK_STEP_SIZE];
-                memcpy(work_buf, c->working_buf, TEST_WORK_STEP_SIZE);
-                c->worked_bytes += TEST_WORK_STEP_SIZE;
-                c->working_buf = c->read_buf + c->worked_bytes;
-                c->remaining_bytes = c->total_bytes - c->worked_bytes;
-
-                c->bytes_processed_in_this_connection += TEST_WORK_STEP_SIZE;
-
-                state_jump(c->state, conn_new_cmd);
                 break;
             }
 
 
             case conn_waiting : {
                 //          printf("[%d:%d] conn_waiting\n",c->thread_index,c->sfd);
-                state_jump(c->state, conn_read);
+                conn_state_jump(c->conn_state, conn_read);
                 stop = true;
                 break;
             }
@@ -220,7 +348,7 @@ void conn_new(int sfd, struct event_base *base, int thread_index) {
     c = conns[sfd];
 
     if (c == NULL) {
-        if (!(c = (CONNECTION *) calloc(1, sizeof(CONNECTION)))) {
+        if (!(c = new (std::nothrow) CONNECTION )) {
             fprintf(stderr, "Failed to allocate connection object\n");
             return;
         }
@@ -238,7 +366,8 @@ void conn_new(int sfd, struct event_base *base, int thread_index) {
 
 
     c->thread_index = thread_index;
-    c->state = conn_read;  // default to read socket after accepting ;
+    c->conn_state = conn_read;  // default to read socket after accepting ;
+    c->work_state = parse_head; //default to parse head
     // worker will block if there comes no data in socket
 
 

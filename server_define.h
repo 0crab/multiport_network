@@ -1,4 +1,9 @@
-#include "settings.h"
+
+
+
+#ifndef MULTIPORT_NETWORK_DEFINE_H
+#define MULTIPORT_NETWORK_DEFINE_H
+
 
 #include <event2/event.h>
 #include <event2/buffer.h>
@@ -7,13 +12,24 @@
 #include <event2/event_compat.h>
 
 #include <queue>
-
-#ifndef MULTIPORT_NETWORK_DEFINE_H
-#define MULTIPORT_NETWORK_DEFINE_H
-
+#include "settings.h"
+#include "kvobj.h"
 
 
+typedef struct {
+        uint8_t magic;
+        uint8_t opcode;
+        uint16_t keylen;
+        uint16_t batchnum;
+        uint8_t prehash;
+        uint8_t reserved;
+        uint32_t totalbodylen;
+} protocol_binary_request_header;
 
+typedef enum {
+    PROTOCOL_BINARY_CMD_GET = 0x01,
+    PROTOCOL_BINARY_CMD_SET = 0x04
+} protocol_binary_command;
 
 enum conn_queue_item_modes {
     queue_new_conn,   /* brand new connection. */
@@ -40,6 +56,12 @@ enum conn_states {
     conn_closed,     /**< connection is closed */
     conn_watch,      /**< held by the logger thread as a watcher */
     conn_max_state   /**< Max state value (used for assertion) */
+};
+
+enum work_states {
+    parse_head,
+    read_key_value,
+    store_kvobj
 };
 
 
@@ -69,9 +91,20 @@ struct CONNECTION{
 
     struct event event;
 
-    conn_states state;
+    conn_states conn_state;
+    work_states work_state;
+
+
+    protocol_binary_request_header binary_header;
+
+    short cmd;
+
+    std::string key;
+    std::string value;
 
     THREAD_INFO * thread;
+
+    kvobj * kv;
 };
 
 struct CONNITEM{
@@ -111,5 +144,13 @@ enum try_read_result {
 THREAD_INFO * threadInfoList;
 
 CONNECTION ** conns;
+
+
+
+
+typedef enum {
+    PROTOCOL_BINARY_REQ = 0x80,
+    PROTOCOL_BINARY_RES = 0x81
+} protocol_binary_magic;
 
 #endif //MULTIPORT_NETWORK_DEFINE_H
