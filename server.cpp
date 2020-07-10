@@ -24,6 +24,42 @@ void work_state_jump(work_states &s_state, work_states t_state) {
 }
 
 
+
+static void con_ret_buf(CONNECTION *c){
+    //simply assume get write back
+    char * buf = c->ret_buf + c->ret_buf_offset;
+    protocol_binary_request_header resp_head;
+
+    resp_head.magic = 0x81;
+    resp_head.opcode = 0x01;
+    resp_head.keylen = htons(c->key.length());
+    resp_head.batchnum = htons(1);
+    resp_head.prehash = 0;
+    resp_head.reserved = 0;
+    resp_head.totalbodylen = htonl(c->key.length() + c->value.length());
+
+    *(protocol_binary_request_header *)buf = resp_head;
+
+    int headlen = sizeof(protocol_binary_request_header);
+    int keylen = c->key.length();
+    memcpy(buf +headlen , c->key.c_str(), keylen);
+
+    //if query hit , return key-value else return key-NOTFOUND
+    if(c->query_hit){
+        int valuelen = c->value.length();
+        memcpy(buf + headlen + keylen, c->value.c_str(), valuelen);
+        c->ret_bytes += headlen + keylen + valuelen;
+    }else{
+        char ans[9]="NOTFOUND";
+        memcpy(buf + headlen + keylen, ans, 8);
+        c->ret_bytes += headlen + keylen + 8;
+    }
+
+    work_state_jump(c->work_state, write_bcak);
+}
+
+
+
 static int try_read_key_value(CONNECTION * c){
     switch(c->cmd){
 
@@ -43,6 +79,18 @@ static int try_read_key_value(CONNECTION * c){
             break;
         }
         case PROTOCOL_BINARY_CMD_GET : {
+            int keybytes = c->binary_header.keylen;
+            if( c->remaining_bytes < keybytes)
+                return 0;
+
+            c->key =  std::string(c->working_buf, keybytes);
+
+            c->remaining_bytes -= keybytes;
+            c->working_buf += keybytes;
+            c->worked_bytes += keybytes;
+
+            work_state_jump(c->work_state,query_key);
+
             break;
         }
         default:
@@ -287,22 +335,67 @@ void process_func(CONNECTION *c) {
                         break;
                     }
                     case store_kvobj : {
-                        std::cout <<"store "<< c->key << ":" << c->value << endl;
-                        assoc_upsert(c->key, c->value);
+                        //std::cout << "store " << c->key << ":" << c->value << endl;
+                        hashTable.insert_or_assign(c->key,c->value);
                         c->bytes_processed_in_this_connection += sizeof(c->binary_header) + c->binary_header.totalbodylen;
                         work_state_jump(c->work_state, parse_head);
                         conn_state_jump(c->conn_state, conn_new_cmd);
                         break;
                     }
+                    case query_key : {
+                        //std::cout << "query:" << c->key;
+                        if(hashTable.find(c->key, c->value)){
+                            //std::cout << ":find" << c->value << endl;
+                            c->query_hit = true;
+                        }else{
+                            //std::cout << "not found" << endl;
+                            c->query_hit = false;
+                        }
+                        //work_state change in this function
+                        con_ret_buf(c);
+                        break;
+                    }
+                    case write_bcak : {
+                        int ret = write(c->sfd, c->ret_buf + c->ret_buf_offset , c->ret_bytes);
+                        if(ret <= 0){
+                            if(errno == EWOULDBLOCK || errno == EAGAIN){
+                                conn_state_jump(c->conn_state, conn_waiting);
+                            }else{
+                                perror("write error");
+                                conn_state_jump(c->conn_state,conn_closing);
+                            }
+                        }else{
+                            if(ret == c->ret_bytes){
+                                //finish write ,ready to parse new instruction
+                                c->ret_buf_offset = 0;
+                                c->ret_bytes = 0;
+                                work_state_jump(c->work_state, parse_head);
+                                conn_state_jump(c->conn_state,conn_new_cmd);
+                            }else if(c->ret_bytes < c->ret_buf_offset){
+                                //only part of data was wrote back, continue to write
+                                c->ret_buf_offset += ret;
+                                c->ret_bytes -=ret;
+                                conn_state_jump(c->conn_state, conn_waiting);
+                            }
+                        }
+                        break;
+                    }
                 }
-
                 break;
             }
 
 
             case conn_waiting : {
                 //          printf("[%d:%d] conn_waiting\n",c->thread_index,c->sfd);
-                conn_state_jump(c->conn_state, conn_read);
+                if(c->work_state == write_bcak){
+                    conn_state_jump(c->conn_state, conn_deal_with);
+                }else if(c->work_state == parse_head
+                            || c->work_state == read_key_value){
+                    conn_state_jump(c->conn_state, conn_read);
+                }else{
+                    perror("work state error ");
+                    conn_state_jump(c->conn_state, conn_closing);
+                }
                 stop = true;
                 break;
             }
@@ -353,7 +446,10 @@ void conn_new(int sfd, struct event_base *base, int thread_index) {
             return;
         }
         c->read_buf_size = INIT_READ_BUF_SIZE;
-        c->read_buf = (char *) malloc(c->read_buf_size * sizeof(char));
+        c->read_buf = (char *) malloc(c->read_buf_size);
+
+        c->ret_buf_size = INIT_RET_BUF_SIZE;
+        c->ret_buf = (char *) malloc(c->ret_buf_size);
 
     }
 
@@ -364,6 +460,9 @@ void conn_new(int sfd, struct event_base *base, int thread_index) {
     c->remaining_bytes = 0;
     c->bytes_processed_in_this_connection = 0;
 
+    c->query_hit = false;
+    c->ret_buf_offset = 0;
+    c->ret_bytes = 0;
 
     c->thread_index = thread_index;
     c->conn_state = conn_read;  // default to read socket after accepting ;

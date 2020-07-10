@@ -7,7 +7,7 @@
 #define KEY_LEN 8
 #define VALUE_LEN 8
 
-#define NUM 100
+#define NUM 100000
 #define KV_NUM (NUM * 26)
 
 #define PACKAGE_LEN    (HEAD_LEN + KEY_LEN + VALUE_LEN)

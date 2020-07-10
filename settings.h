@@ -10,6 +10,7 @@ int port_num;
 #define PORT_BASE 8033
 
 #define INIT_READ_BUF_SIZE 1000
+#define INIT_RET_BUF_SIZE 1000
 
 #define MAX_CONN 65535
 

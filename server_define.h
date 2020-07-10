@@ -1,6 +1,3 @@
-
-
-
 #ifndef MULTIPORT_NETWORK_DEFINE_H
 #define MULTIPORT_NETWORK_DEFINE_H
 
@@ -61,7 +58,9 @@ enum conn_states {
 enum work_states {
     parse_head,
     read_key_value,
-    store_kvobj
+    store_kvobj,
+    query_key,
+    write_bcak,
 };
 
 
@@ -86,6 +85,11 @@ struct CONNECTION{
     int     worked_bytes;
     int     remaining_bytes;      //bytes not deal with
 
+    int     ret_buf_size;
+    char*   ret_buf;
+    int     ret_buf_offset;
+    int     ret_bytes;
+
     unsigned long      bytes_processed_in_this_connection;
 
 
@@ -101,6 +105,8 @@ struct CONNECTION{
 
     std::string key;
     std::string value;
+
+    bool query_hit;
 
     THREAD_INFO * thread;
 
