@@ -50,8 +50,9 @@ void con_send_buf(char * package_buf, int query_num){
     *(uint32_t *) HEAD_BODY_LENGTH(package_buf) = htonl(KEY_LEN);
 
     char key_buf[KEY_LEN + 1];
+    char c = query_num % 26 + 'a';
     sprintf(key_buf, "%d", query_num);
-    memset(key_buf + strlen(key_buf), 'a', KEY_LEN - strlen(key_buf));
+    memset(key_buf + strlen(key_buf), c, KEY_LEN - strlen(key_buf));
     memcpy(PACKAGE_KEY(package_buf), key_buf, KEY_LEN);
 }
 
