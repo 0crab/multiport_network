@@ -7,8 +7,11 @@
 #define KEY_LEN 8
 #define VALUE_LEN 8
 
-#define NUM 100000
+#define NUM 1000
 #define KV_NUM (NUM * 26)
+
+#define KEY_RANGE KV_NUM
+#define SKEW 0.0
 
 #define PACKAGE_LEN    (HEAD_LEN + KEY_LEN + VALUE_LEN)
 #define DATABASE_LEN    (KV_NUM * PACKAGE_LEN)

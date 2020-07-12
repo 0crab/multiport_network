@@ -14,9 +14,9 @@
 #include "settings.h"
 #include "tracer.h"
 #include "hash.h"
-#include "generator.h"
 #include <vector>
-#include <random>
+
+
 
 
 using namespace std;
@@ -42,7 +42,7 @@ send_info ** info_matrix;
 
 uint64_t g_offset = 0;
 uint64_t g_count = 0;
-int myround = ROUND_SET;
+int round = ROUND_SET;
 bool stop = false;
 bool clean = false;
 mutex g_mutex ;
@@ -135,25 +135,6 @@ int main(int argc, char **argv) {
 
 void con_database() {
 
-    double skew = SKEW;
-    uint64_t range = KEY_RANGE;
-    uint64_t count = KV_NUM;
-    uint64_t * array =( uint64_t * ) calloc(count, sizeof(uint64_t));
-    if (skew < zipf_distribution<uint64_t>::epsilon) {
-        std::default_random_engine engine(
-                static_cast<uint64_t>(chrono::steady_clock::now().time_since_epoch().count()));
-        std::uniform_int_distribution<size_t> dis(0, range + 0);
-        for (size_t i = 0; i < count; i++) {
-            array[i] = static_cast<uint64_t >(dis(engine));
-        }
-    } else {
-        zipf_distribution<uint64_t> engine(range, skew);
-        mt19937 mt;
-        for (size_t i = 0; i < count; i++) {
-            array[i] = engine(mt);
-        }
-    }
-
     my_database = (char *) calloc(KV_NUM, PACKAGE_LEN);
     if(my_database == NULL ){
         perror("calloc database error\n");
@@ -173,38 +154,36 @@ void con_database() {
     char key_buf[KEY_LEN + 1];
     char value_buf[VALUE_LEN + 1];
 
+    for(char c = 'a'; c <= 'z'; c ++){
+        for (int i = 0; i < NUM ; i++) {
+            memset(package_buf, 0, sizeof(package_buf));
+            memset(key_buf, 0, sizeof(key_buf));
+            memset(value_buf, 0, sizeof(value_buf));
 
-    for(size_t i = 0; i < KV_NUM; i++){
+            *(uint8_t *) HEAD_MAGIC(package_buf) = Magic;
+            *(uint8_t *) HEAD_OPCODE(package_buf) = Opcode;
+            *(uint16_t *) HEAD_KEY_LENGTH(package_buf) = htons(Key_length);
+            *(uint16_t *) HEAD_BATCH_NUM(package_buf) = htons(Batch_num);
+            *(uint8_t *) HEAD_RETAIN(package_buf) = Retain;
+            *(uint32_t *) HEAD_BODY_LENGTH(package_buf) = htonl(Total_body_length);
 
-        uint64_t n = array[i] / 26;
-        uint8_t c = array[i] % 26;
-
-        memset(package_buf, 0, sizeof(package_buf));
-        memset(key_buf, 0, sizeof(key_buf));
-        memset(value_buf, 0, sizeof(value_buf));
-
-        *(uint8_t *) HEAD_MAGIC(package_buf) = Magic;
-        *(uint8_t *) HEAD_OPCODE(package_buf) = Opcode;
-        *(uint16_t *) HEAD_KEY_LENGTH(package_buf) = htons(Key_length);
-        *(uint16_t *) HEAD_BATCH_NUM(package_buf) = htons(Batch_num);
-        *(uint8_t *) HEAD_RETAIN(package_buf) = Retain;
-        *(uint32_t *) HEAD_BODY_LENGTH(package_buf) = htonl(Total_body_length);
-
-        sprintf(key_buf, "%d", n);
-        sprintf(value_buf, "%d", n);
-        memset(key_buf + strlen(key_buf), 'a'+c, VALUE_LEN - strlen(key_buf));
-        memset(value_buf + strlen(value_buf), 'a'+c+1 , VALUE_LEN - strlen(value_buf));
-        Pre_hash = static_cast<uint8_t > ((hash_func(key_buf, KEY_LEN)) % port_num);
+            sprintf(key_buf, "%d", i);
+            sprintf(value_buf, "%d", i);
+            memset(key_buf + strlen(key_buf), c, VALUE_LEN - strlen(key_buf));
+            memset(value_buf + strlen(value_buf), c + 1, VALUE_LEN - strlen(value_buf));
+            Pre_hash = static_cast<uint8_t > ((hash_func(key_buf, KEY_LEN)) % port_num);
 
 
-        memcpy(PACKAGE_KEY(package_buf), key_buf, KEY_LEN);
-        memcpy(PACKAGE_VALUE(package_buf), value_buf, VALUE_LEN);
-        *(uint8_t *) HEAD_PRE_HASH(package_buf) = Pre_hash;
+            memcpy(PACKAGE_KEY(package_buf), key_buf, KEY_LEN);
+            memcpy(PACKAGE_VALUE(package_buf), value_buf, VALUE_LEN);
+            *(uint8_t *) HEAD_PRE_HASH(package_buf) = Pre_hash;
 
-        memcpy(my_database + offset, package_buf, PACKAGE_LEN );
-        offset += PACKAGE_LEN;
+            memcpy(my_database + offset, package_buf, PACKAGE_LEN );
+            offset += PACKAGE_LEN;
 
+        }
     }
+
 }
 
 unsigned char get_opcode(instructs inst){
@@ -246,10 +225,10 @@ void data_dispatch(int tid){
         }
         work_buf = my_database + g_offset;
         if(WORK_OP_NUM >= KV_NUM - g_count){
-            printf("myround %d end,g_count %d\n",myround,g_count);
+            printf("round %d end,g_count %d\n",round,g_count);
             end = true;
             local_count = g_count;
-            if(--myround <= 0){
+            if(--round <= 0){
                 stop =true;
             }else{
                 stop = false;
