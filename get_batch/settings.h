@@ -6,12 +6,12 @@
 #define KEY_LEN 8
 #define VALUE_LEN 8
 
-#define NUM 100000
+#define NUM 10000
 #define KV_NUM (NUM * 26)
 
 #define ROUND_SET 1
 
-#define BATCH_NUM 100
+#define BATCH_NUM 10
 
 #define KEY_RANGE KV_NUM
 #define SKEW 0.0

@@ -18,6 +18,8 @@
 #include <random>
 #include <arpa/inet.h>
 
+#include <fcntl.h>
+
 using namespace std;
 
 
@@ -58,6 +60,8 @@ long * timelist;
 vector<vector<BATCH_OBJ>> database;
 
 mutex * mutexlist;
+
+long * global_working_list;
 
 uint64_t *total_send_bytes;
 uint64_t *total_recv_bytes;
@@ -158,6 +162,8 @@ void con_database(){
             batchobj->num ++;
             batchobj->offset +=PACKAGE_LEN;
 
+            //Convert the build offset to the send offset
+            batchobj->offset = 0;
             database[Pre_hash].push_back(*batchobj);
 
             batchobj->num = 0;
@@ -207,46 +213,73 @@ void con_database(){
 }
 
 
-bool fetch_and_send(uint32_t fd,int i,int tid){
-    BATCH_OBJ batchObj;
-    mutexlist[i].lock();
-    if(database[i].size() == 0){
-        mutexlist[i].unlock();
-        return false;
-    }else{
-        auto it = database[i].begin();
-        batchObj = *it;
-        database[i].erase(it);
+bool fetch_and_send(uint32_t fd,int i,int tid,bool * send_finish,uint64_t * working_index) {
+    //printf("thread %d,port %d fetch_and_send",tid,i);
+    BATCH_OBJ * batchObj;
+
+    if(*send_finish == true ){
+        mutexlist[i].lock();
+        if( global_working_list[i] < (long)database[i].size() -1){
+            *working_index = ++ global_working_list[i];
+        }else{
+            mutexlist[i].unlock();
+            return false;
+        }
         mutexlist[i].unlock();
     }
+
+
+    //printf("thread %d,port %d fetch_and_send,working index: %lu\n",tid,i,*working_index);
+    batchObj = &database[i][*working_index];
 
     int ret;
-    ret = write(fd, batchObj.buf, batchObj.datalen);
-    if(ret == batchObj.datalen){
-        total_send_bytes[tid] += ret;
-    }else{
-        //not an error ;but we stop here
-        perror("write error");
-        exit(-1);
+
+    ret = write(fd, batchObj->buf + batchObj->offset, batchObj->datalen - batchObj->offset);
+    if (ret <= 0) {
+        if (errno == EWOULDBLOCK || errno == EAGAIN) {
+            *send_finish = false;
+            return true;
+        } else {
+            perror("write error");
+            exit(-1);
+        }
+    }else if(ret < batchObj->datalen) {
+        batchObj->offset +=ret;
+        *send_finish = false;
+    }else {
+        //ret == batchObj->datalen
+        total_send_bytes[tid] +=batchObj->datalen;
+        *send_finish = true;
     }
 
 
-    uint32_t expected_bytes = (BATCH_NUM * (PACKAGE_LEN + VALUE_LEN));
-    uint32_t  recbytes = 0;
     char rec_buf[4000];
-    while (recbytes < expected_bytes){
-        uint32_t ret = read(fd, rec_buf, 4000);
-        recbytes += ret;
+    ret = read(fd, rec_buf, 4000);
+    if(ret == -1){
+        if (errno == EWOULDBLOCK || errno == EAGAIN) {
+            //printf("read again\n");
+        } else {
+            perror("read error");
+            exit(-1);
+        }
+    }else{
+        total_recv_bytes[tid] += ret;
     }
-
-    total_recv_bytes[tid] += recbytes;
 
     return true;
-}
 
+}
 
 void data_dispatch(int tid){
     uint32_t * fds = (uint32_t *) calloc(port_num, sizeof(int));
+
+    uint64_t * thread_working_list = new uint64_t[port_num]();
+
+    bool * finish_send = new bool[port_num];
+
+    for(int i = 0;i < port_num;i++){
+        finish_send[i] = true;
+    }
 
     for(int i = 0; i < port_num; i++){
         unsigned int connect_fd;
@@ -270,6 +303,12 @@ void data_dispatch(int tid){
             return ;
         }
 
+        if (fcntl(connect_fd, F_SETFL, fcntl(connect_fd, F_GETFL) | O_NONBLOCK) < 0) {
+            perror("setting O_NONBLOCK");
+            close(connect_fd);
+            return ;
+        }
+
         fds[i] = connect_fd;
     }
 
@@ -279,12 +318,15 @@ void data_dispatch(int tid){
     while(stop_count != port_num){
         stop_count = 0;
         for(int i = 0;i< port_num;i++){
-            if(!fetch_and_send(fds[i],i,tid)){
+            if(!fetch_and_send(fds[i],i,tid,finish_send+i,thread_working_list+i)){
                 stop_count ++;
             }
         }
     }
     timelist[tid] += t.getRunTime();
+    for(int i = 0;i <port_num;i++){
+        close(fds[i]);
+    }
     printf("thread %d,sendbytes:%lu\trecvbytes:%lu\n",tid,total_send_bytes[tid],total_recv_bytes[tid]);
 
 }
@@ -327,10 +369,15 @@ int main(int argc, char **argv) {
 
     hash_init();
 
-    mutexlist = new mutex[port_num];
+    mutexlist = new mutex[port_num]();
 
-    total_send_bytes = new uint64_t[thread_num];
-    total_recv_bytes = new uint64_t[thread_num];
+    global_working_list = new long[port_num];
+    for(int i = 0;i<port_num;i++){
+        global_working_list[i] = -1;
+    }
+
+    total_send_bytes = new uint64_t[thread_num]();
+    total_recv_bytes = new uint64_t[thread_num]();
 
 
     con_database();

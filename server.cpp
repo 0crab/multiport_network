@@ -7,6 +7,7 @@
 #include <pthread.h>
 #include <assert.h>
 #include <fcntl.h>
+#include <signal.h>
 
 
 #include "server_define.h"
@@ -91,13 +92,17 @@ static void send_batch(CONNECTION * c){
     }else if (c->batch_count == c->batch_num){
         //write back
         auto it = c->batch_ret_vector.begin();
+
         uint64_t  ret = write(c->sfd, it->buf + it->offset, it->datalen - it->offset);
         if(ret <= 0){
             if(errno == EWOULDBLOCK || errno == EAGAIN){
                 conn_state_jump(c->conn_state, conn_waiting);
+            }else if(errno == SIGPIPE) {
+                perror("client close");
+                conn_state_jump(c->conn_state,conn_closing);
             }else{
                 perror("write error");
-                conn_state_jump(c->conn_state,conn_closing);
+                exit(-1);
             }
         }else{
             if(ret == it->datalen){
@@ -752,13 +757,8 @@ int main(int argc, char **argv) {
 
     init_workers();
 
-//    int i;
-//    const char **methods = event_get_supported_methods();
-//    printf("Starting Libevent %s.  Available methods are:\n",
-//           event_get_version());
-//    for (i=0; methods[i] != NULL; ++i) {
-//        printf("    %s\n", methods[i]);
-//    }
+    //do not stop the server when writing to a closed socket
+    signal(SIGPIPE, SIG_IGN);
 
     struct event_base *base;
     base = event_base_new();
