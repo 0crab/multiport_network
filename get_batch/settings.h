@@ -1,6 +1,5 @@
-
-#ifndef SETTINGS_H
-#define SETTINGS_H
+#ifndef MULTIPORT_NETWORK_SETTINGS_H
+#define MULTIPORT_NETWORK_SETTINGS_H
 
 #define HEAD_LEN 12
 
@@ -10,13 +9,17 @@
 #define NUM 100000
 #define KV_NUM (NUM * 26)
 
+#define ROUND_SET 1
+
+#define BATCH_NUM 100
+
 #define KEY_RANGE KV_NUM
 #define SKEW 0.0
 
-#define PACKAGE_LEN    (HEAD_LEN + KEY_LEN + VALUE_LEN)
-#define DATABASE_LEN    (KV_NUM * PACKAGE_LEN)
 
-//#define DATA_SIZE ((KV_NUM * PACKAGE_LEN ) / 1000000000.0 )
+#define PACKAGE_LEN    (HEAD_LEN + KEY_LEN )
+#define DATABASE_LEN    (KV_NUM * PACKAGE_LEN + (KV_NUM / BATCH_NUM) * HEAD_LEN)
+
 
 #define PORT_BASE 8033
 
@@ -35,14 +38,13 @@ int port_num;
 #define PACKAGE_KEY(buf)             (buf + HEAD_LEN)
 #define PACKAGE_VALUE(buf)           (buf + HEAD_LEN + KEY_LEN)
 
-#define SEND_BATCH 100
 
 #define WORK_OP_NUM (SEND_BATCH * port_num)
 #define WORK_LEN (WORK_OP_NUM * PACKAGE_LEN )
 
 #define GET_PACKAGE(buf,i)  (buf + i * PACKAGE_LEN)
 
-#define ROUND_SET 1
+
 
 #define DATABASE_LEN KV_NUM * PACKAGE_LEN
 
@@ -51,4 +53,7 @@ typedef struct Package_obj{
     size_t  package_len;
 }package_obj;
 
-#endif
+
+
+
+#endif //MULTIPORT_NETWORK_SETTINGS_H

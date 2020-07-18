@@ -27,38 +27,104 @@ void work_state_jump(work_states &s_state, work_states t_state) {
 
 static void con_ret_buf(CONNECTION *c){
     //simply assume get write back
-    char * buf = c->ret_buf + c->ret_buf_offset;
+   // char * buf = c->ret_buf + c->ret_buf_offset;
+    int headlen = sizeof(protocol_binary_request_header);
+    int keylen = c->key.length();
+    uint64_t valuelen = c->query_hit? c->value.size() : 8;
+
+    char * buf;
+    if(c->in_batch_get){
+        //valuelen should be calculated in advance based on query result
+        //may cause bug here c->value.size()
+        if(c->batch_ret_vector.back().datalen + headlen + keylen + c->value.size() > BATCH_BUF_SIZE){
+            //need new buf
+            batchbuf tmp;
+            tmp.buf = (char * )malloc(BATCH_BUF_SIZE);
+            tmp.offset = 0;
+            tmp.datalen = 0;
+            c->batch_ret_vector.push_back(tmp);
+        }
+        buf = c->batch_ret_vector.back().buf + c->batch_ret_vector.back().datalen;
+    }else{
+        buf = c->ret_buf + c->ret_buf_offset;
+    }
+
     protocol_binary_request_header resp_head;
 
     resp_head.magic = 0x81;
     resp_head.opcode = 0x01;
     resp_head.keylen = htons(c->key.length());
-    resp_head.batchnum = htons(1);
+    resp_head.batchnum = c->in_batch_get? c->batch_count++ : htons(1);
     resp_head.prehash = 0;
     resp_head.reserved = 0;
     resp_head.totalbodylen = htonl(c->key.length() + c->value.length());
 
     *(protocol_binary_request_header *)buf = resp_head;
 
-    int headlen = sizeof(protocol_binary_request_header);
-    int keylen = c->key.length();
     memcpy(buf +headlen , c->key.c_str(), keylen);
+
+    char notfound_ans[9]="NOTFOUND";
 
     //if query hit , return key-value else return key-NOTFOUND
     if(c->query_hit){
-        int valuelen = c->value.length();
         memcpy(buf + headlen + keylen, c->value.c_str(), valuelen);
-        c->ret_bytes += headlen + keylen + valuelen;
     }else{
-        char ans[9]="NOTFOUND";
-        memcpy(buf + headlen + keylen, ans, 8);
+        memcpy(buf + headlen + keylen, notfound_ans, 8);
         c->ret_bytes += headlen + keylen + 8;
+    }
+
+    if(c->in_batch_get){
+        c->batch_ret_vector.back().datalen +=  headlen + keylen + valuelen;
+    }else{
+        c->ret_bytes += headlen + keylen + valuelen;
     }
 
     work_state_jump(c->work_state, write_bcak);
 }
 
+static void send_batch(CONNECTION * c){
+    if(c->batch_count < c->batch_num){
+        //return package has been writen to the cache;just ready to parse new cmd
+        work_state_jump(c->work_state, parse_head);
+        conn_state_jump(c->conn_state,conn_new_cmd);
+        return ;
+    }else if (c->batch_count == c->batch_num){
+        //write back
+        auto it = c->batch_ret_vector.begin();
+        uint64_t  ret = write(c->sfd, it->buf + it->offset, it->datalen - it->offset);
+        if(ret <= 0){
+            if(errno == EWOULDBLOCK || errno == EAGAIN){
+                conn_state_jump(c->conn_state, conn_waiting);
+            }else{
+                perror("write error");
+                conn_state_jump(c->conn_state,conn_closing);
+            }
+        }else{
+            if(ret == it->datalen){
+                //finish write  free buf
+                free(it->buf);
+                c->batch_ret_vector.erase(it);
 
+                if(c->batch_ret_vector.size() == 0){
+                    //finish batch send
+                    c->in_batch_get = false;
+                    c->batch_num = 0;
+                    c->batch_count = 0;
+                    work_state_jump(c->work_state, parse_head);
+                    conn_state_jump(c->conn_state,conn_new_cmd);
+                }else{
+                    //still have buf ,ready to write again
+                    conn_state_jump(c->conn_state, conn_waiting);
+                }
+            }else if(ret < it->datalen){
+                //only part of data was wrote back, continue to write
+                it->offset += ret;
+                conn_state_jump(c->conn_state, conn_waiting);
+            }
+        }
+
+    }
+}
 
 static int try_read_key_value(CONNECTION * c){
     switch(c->cmd){
@@ -123,6 +189,17 @@ static void dispatch_bin_command(CONNECTION *c) {
                 return;
             }
             break;
+        case PROTOCOL_BINARY_CMD_GETBATCH_HEAD:
+            c->batch_num = c->binary_header.batchnum;
+            c->batch_count = 0;
+            c->in_batch_get = true;
+            batchbuf bf;
+            bf.buf = (char *)malloc(BATCH_BUF_SIZE);
+            bf.offset = 0;
+            bf.datalen = 0;
+            c->batch_ret_vector.push_back(bf);
+            work_state_jump(c->work_state, parse_head);
+            break;
         case PROTOCOL_BINARY_CMD_GET:
             if (keylen != 0 && bodylen == keylen ) {
                 work_state_jump(c->work_state,read_key_value);
@@ -161,6 +238,10 @@ static int try_read_head_binary(CONNECTION *c) {
 
     c->cmd = c->binary_header.opcode;
 
+    if(c->in_batch_get && c->batch_count != c->binary_header.batchnum){
+        perror("batchnum error");
+        exit(-1);
+    }
 
     //set next working state in this function
     dispatch_bin_command(c);
@@ -356,6 +437,10 @@ void process_func(CONNECTION *c) {
                         break;
                     }
                     case write_bcak : {
+                        if(c->in_batch_get){
+                            send_batch(c);
+                            break;
+                        }
                         int ret = write(c->sfd, c->ret_buf + c->ret_buf_offset , c->ret_bytes);
                         if(ret <= 0){
                             if(errno == EWOULDBLOCK || errno == EAGAIN){
@@ -371,7 +456,7 @@ void process_func(CONNECTION *c) {
                                 c->ret_bytes = 0;
                                 work_state_jump(c->work_state, parse_head);
                                 conn_state_jump(c->conn_state,conn_new_cmd);
-                            }else if(c->ret_bytes < c->ret_buf_offset){
+                            }else if(ret < c->ret_bytes){
                                 //only part of data was wrote back, continue to write
                                 c->ret_buf_offset += ret;
                                 c->ret_bytes -=ret;
@@ -463,6 +548,10 @@ void conn_new(int sfd, struct event_base *base, int thread_index) {
     c->query_hit = false;
     c->ret_buf_offset = 0;
     c->ret_bytes = 0;
+
+    c->in_batch_get = false;
+    c->batch_num = 0;
+    c->batch_count = 0;
 
     c->thread_index = thread_index;
     c->conn_state = conn_read;  // default to read socket after accepting ;

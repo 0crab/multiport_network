@@ -7,6 +7,7 @@
 #include <event2/bufferevent.h>
 #include <event2/event_struct.h>
 #include <event2/event_compat.h>
+#include <vector>
 
 #include <queue>
 #include "settings.h"
@@ -25,6 +26,7 @@ typedef struct {
 
 typedef enum {
     PROTOCOL_BINARY_CMD_GET = 0x01,
+    PROTOCOL_BINARY_CMD_GETBATCH_HEAD = 0x03,
     PROTOCOL_BINARY_CMD_SET = 0x04
 } protocol_binary_command;
 
@@ -73,6 +75,12 @@ typedef struct CONNECTION CONNECTION;
 typedef struct CONNITEM CONN_ITEM;
 typedef struct THREADINFO THREAD_INFO;
 
+typedef struct {
+    char * buf;
+    uint64_t datalen;
+    uint64_t offset;
+}batchbuf;
+
 struct CONNECTION{
     int sfd;
     int thread_index;
@@ -89,6 +97,8 @@ struct CONNECTION{
     char*   ret_buf;
     int     ret_buf_offset;
     int     ret_bytes;
+
+    std::vector<batchbuf> batch_ret_vector;
 
     unsigned long      bytes_processed_in_this_connection;
 
@@ -111,6 +121,10 @@ struct CONNECTION{
     THREAD_INFO * thread;
 
     kvobj * kv;
+
+    uint16_t batch_num;
+    uint16_t batch_count;
+    bool in_batch_get;
 };
 
 struct CONNITEM{

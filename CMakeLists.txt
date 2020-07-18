@@ -9,6 +9,8 @@ add_subdirectory(micro_test)
 
 add_subdirectory(cuckoo_local_test)
 
+add_subdirectory(get_batch)
+
 link_libraries(pthread event event_core)
 
 add_executable(multiport_network server.cpp kvobj.cpp assoc.cpp)

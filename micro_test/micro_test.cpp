@@ -83,10 +83,6 @@ int main(int argc, char **argv) {
 
     timelist = (long *)calloc(thread_num, sizeof(long));
 
-    info_matrix =(send_info **) calloc(thread_num , sizeof(send_info*));
-    for(int i = 0; i < port_num; i++){
-        info_matrix[i] = (send_info *) calloc(port_num, sizeof(send_info));
-    }
 
     double kv_n = KV_NUM;
     double p_l = PACKAGE_LEN;

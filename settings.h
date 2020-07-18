@@ -11,6 +11,7 @@ int port_num;
 
 #define INIT_READ_BUF_SIZE 1000
 #define INIT_RET_BUF_SIZE 1000
+#define BATCH_BUF_SIZE 1000000
 
 #define MAX_CONN 65535
 
