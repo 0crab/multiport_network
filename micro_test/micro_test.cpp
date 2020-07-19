@@ -17,10 +17,24 @@
 #include "generator.h"
 #include <vector>
 #include <random>
+#include <sys/stat.h>
+#include <atomic>
+#include <iostream>
+#include <random>
+#include <chrono>
+#include <fstream>
+#include <pthread.h>
+#include <sys/time.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <string.h>
+#include <math.h>
+
 
 
 using namespace std;
 
+const char *existingFilePath = "./testfile.dat";
 
 enum instructs {
     GET,
@@ -130,25 +144,39 @@ int main(int argc, char **argv) {
 
 
 void con_database() {
-
     double skew = SKEW;
     uint64_t range = KEY_RANGE;
     uint64_t count = KV_NUM;
-    uint64_t * array =( uint64_t * ) calloc(count, sizeof(uint64_t));
-    if (skew < zipf_distribution<uint64_t>::epsilon) {
-        std::default_random_engine engine(
-                static_cast<uint64_t>(chrono::steady_clock::now().time_since_epoch().count()));
-        std::uniform_int_distribution<size_t> dis(0, range + 0);
-        for (size_t i = 0; i < count; i++) {
-            array[i] = static_cast<uint64_t >(dis(engine));
+    uint64_t *array =( uint64_t * ) calloc(count, sizeof(uint64_t));
+
+    struct stat buffer;
+    if (stat(existingFilePath, &buffer) == 0) {
+        cout << "read generation" << endl;
+        FILE *fp = fopen(existingFilePath, "rb+");
+        fread(array, sizeof(uint64_t), count, fp);
+        fclose(fp);
+    }else{
+        if (skew < zipf_distribution<uint64_t>::epsilon) {
+            std::default_random_engine engine(
+                    static_cast<uint64_t>(chrono::steady_clock::now().time_since_epoch().count()));
+            std::uniform_int_distribution<size_t> dis(0, range + 0);
+            for (size_t i = 0; i < count; i++) {
+                array[i] = static_cast<uint64_t >(dis(engine));
+            }
+        } else {
+            zipf_distribution<uint64_t> engine(range, skew);
+            mt19937 mt;
+            for (size_t i = 0; i < count; i++) {
+                array[i] = engine(mt);
+            }
         }
-    } else {
-        zipf_distribution<uint64_t> engine(range, skew);
-        mt19937 mt;
-        for (size_t i = 0; i < count; i++) {
-            array[i] = engine(mt);
-        }
+        FILE *fp = fopen(existingFilePath, "wb+");
+        fwrite(array, sizeof(uint64_t), count, fp);
+        fclose(fp);
+        cout << "write generation" << endl;
     }
+
+
 
     my_database = (char *) calloc(KV_NUM, PACKAGE_LEN);
     if(my_database == NULL ){

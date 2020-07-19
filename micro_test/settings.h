@@ -7,7 +7,7 @@
 #define KEY_LEN 8
 #define VALUE_LEN 8
 
-#define NUM 100000
+#define NUM 1000
 #define KV_NUM (NUM * 26)
 
 #define KEY_RANGE KV_NUM

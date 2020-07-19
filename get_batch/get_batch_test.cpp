@@ -17,10 +17,13 @@
 #include <vector>
 #include <random>
 #include <arpa/inet.h>
+#include <sys/stat.h>
 
 #include <fcntl.h>
 
 using namespace std;
+
+const char *existingFilePath = "./testfile.dat";
 
 
 enum instructs {
@@ -89,20 +92,33 @@ void con_database(){
     double skew = SKEW;
     uint64_t range = KEY_RANGE;
     uint64_t count = KV_NUM;
-    uint64_t * array =( uint64_t * ) calloc(count, sizeof(uint64_t));
-    if (skew < zipf_distribution<uint64_t>::epsilon) {
-        std::default_random_engine engine(
-                static_cast<uint64_t>(chrono::steady_clock::now().time_since_epoch().count()));
-        std::uniform_int_distribution<size_t> dis(0, range + 0);
-        for (size_t i = 0; i < count; i++) {
-            array[i] = static_cast<uint64_t >(dis(engine));
+    uint64_t *array =( uint64_t * ) calloc(count, sizeof(uint64_t));
+
+    struct stat buffer;
+    if (stat(existingFilePath, &buffer) == 0) {
+        cout << "read generation" << endl;
+        FILE *fp = fopen(existingFilePath, "rb+");
+        fread(array, sizeof(uint64_t), count, fp);
+        fclose(fp);
+    }else{
+        if (skew < zipf_distribution<uint64_t>::epsilon) {
+            std::default_random_engine engine(
+                    static_cast<uint64_t>(chrono::steady_clock::now().time_since_epoch().count()));
+            std::uniform_int_distribution<size_t> dis(0, range + 0);
+            for (size_t i = 0; i < count; i++) {
+                array[i] = static_cast<uint64_t >(dis(engine));
+            }
+        } else {
+            zipf_distribution<uint64_t> engine(range, skew);
+            mt19937 mt;
+            for (size_t i = 0; i < count; i++) {
+                array[i] = engine(mt);
+            }
         }
-    } else {
-        zipf_distribution<uint64_t> engine(range, skew);
-        mt19937 mt;
-        for (size_t i = 0; i < count; i++) {
-            array[i] = engine(mt);
-        }
+        FILE *fp = fopen(existingFilePath, "wb+");
+        fwrite(array, sizeof(uint64_t), count, fp);
+        fclose(fp);
+        cout << "write generation" << endl;
     }
 
     batchObjList = (BATCH_OBJ *)calloc(port_num, sizeof(BATCH_OBJ));
@@ -223,13 +239,15 @@ bool fetch_and_send(uint32_t fd,int i,int tid,bool * send_finish,uint64_t * work
         if( global_working_list[i] < (long)database[i].size() -1){
             *working_index = ++ global_working_list[i];
         }else{
-            if(round_list[i] < ROUND_SET){
-                round_list[i] ++;
-                global_working_list[i] = -1;
-            }else{
-                mutexlist[i].unlock();
-                return false;
-            }
+//            if(round_list[i] < ROUND_SET){
+//                round_list[i] ++;
+//                global_working_list[i] = -1;
+//            }else{
+//                mutexlist[i].unlock();
+//                return false;
+//            }
+            mutexlist[i].unlock();
+            return false;
         }
         mutexlist[i].unlock();
     }

@@ -439,12 +439,12 @@ void process_func(CONNECTION *c) {
                         break;
                     }
                     case query_key : {
-                        //std::cout << "query:" << c->key;
+                        std::cout << "query:" << c->key;
                         if(hashTable.find(c->key, c->value)){
-                            //std::cout << ":find" << c->value << endl;
+                            std::cout << ":find" << c->value << endl;
                             c->query_hit = true;
                         }else{
-                            //std::cout << "not found" << endl;
+                            std::cout << "not found" << endl;
                             c->query_hit = false;
                         }
                         //work_state change in this function
