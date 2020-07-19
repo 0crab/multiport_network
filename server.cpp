@@ -84,6 +84,7 @@ static void con_ret_buf(CONNECTION *c){
 }
 
 static void send_batch(CONNECTION * c){
+    c->bytes_processed_in_this_connection += sizeof(c->binary_header) + c->binary_header.keylen;
     if(c->batch_count < c->batch_num){
         //return package has been writen to the cache;just ready to parse new cmd
         work_state_jump(c->work_state, parse_head);
