@@ -62,6 +62,7 @@ vector<vector<BATCH_OBJ>> database;
 mutex * mutexlist;
 
 long * global_working_list;
+int * round_list;
 
 uint64_t *total_send_bytes;
 uint64_t *total_recv_bytes;
@@ -222,8 +223,13 @@ bool fetch_and_send(uint32_t fd,int i,int tid,bool * send_finish,uint64_t * work
         if( global_working_list[i] < (long)database[i].size() -1){
             *working_index = ++ global_working_list[i];
         }else{
-            mutexlist[i].unlock();
-            return false;
+            if(round_list[i] < ROUND_SET){
+                round_list[i] ++;
+                global_working_list[i] = -1;
+            }else{
+                mutexlist[i].unlock();
+                return false;
+            }
         }
         mutexlist[i].unlock();
     }
@@ -249,6 +255,7 @@ bool fetch_and_send(uint32_t fd,int i,int tid,bool * send_finish,uint64_t * work
     }else {
         //ret == batchObj->datalen
         total_send_bytes[tid] +=batchObj->datalen;
+        batchObj->offset = 0;
         *send_finish = true;
     }
 
@@ -353,6 +360,7 @@ int main(int argc, char **argv) {
     double data_size = (kv_n * p_l * ROUND_SET) / 1000000000 ;
     cout << "worker : " << thread_num <<  "\tport num : " << port_num << endl
          << "kv_num : " << KV_NUM << endl
+         << "round : " << ROUND_SET <<endl
          << "data size : " << data_size << "GB" << endl
          << "port base : " << PORT_BASE << endl;
 
@@ -375,6 +383,8 @@ int main(int argc, char **argv) {
     for(int i = 0;i<port_num;i++){
         global_working_list[i] = -1;
     }
+
+    round_list = new int[port_num];
 
     total_send_bytes = new uint64_t[thread_num]();
     total_recv_bytes = new uint64_t[thread_num]();

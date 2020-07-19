@@ -9,7 +9,7 @@
 #define NUM 10000
 #define KV_NUM (NUM * 26)
 
-#define ROUND_SET 1
+#define ROUND_SET 4
 
 #define BATCH_NUM 10
 
