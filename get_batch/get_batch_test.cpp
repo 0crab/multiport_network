@@ -243,7 +243,7 @@ bool fetch_and_send(uint32_t fd,int i,int tid,bool * send_finish,uint64_t * work
             perror("write error");
             exit(-1);
         }
-    }else if(ret < batchObj->datalen) {
+    }else if(ret < batchObj->datalen - batchObj->offset) {
         batchObj->offset +=ret;
         *send_finish = false;
     }else {

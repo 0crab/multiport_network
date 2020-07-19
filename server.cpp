@@ -93,7 +93,7 @@ static void send_batch(CONNECTION * c){
         //write back
         auto it = c->batch_ret_vector.begin();
 
-        uint64_t  ret = write(c->sfd, it->buf + it->offset, it->datalen - it->offset);
+        int ret = write(c->sfd, it->buf + it->offset, it->datalen - it->offset);
         if(ret <= 0){
             if(errno == EWOULDBLOCK || errno == EAGAIN){
                 conn_state_jump(c->conn_state, conn_waiting);
@@ -102,7 +102,7 @@ static void send_batch(CONNECTION * c){
                 conn_state_jump(c->conn_state,conn_closing);
             }else{
                 perror("write error");
-                exit(-1);
+                conn_state_jump(c->conn_state,conn_closing);
             }
         }else{
             if(ret == it->datalen){
@@ -399,11 +399,20 @@ void process_func(CONNECTION *c) {
                 switch(c->work_state){
 
                     case parse_head : {
+                        //check threre is at least one byte to parse
+                        if(c->remaining_bytes < 1){
+                            conn_state_jump(c->conn_state,conn_waiting);
+                            break;
+                        }
+
                         if ((unsigned char) c->working_buf[0] == (unsigned char) PROTOCOL_BINARY_REQ) {
                             //binary_protocol
                             if(!try_read_head_binary(c)){
                                 conn_state_jump(c->conn_state,conn_waiting);
                             }
+                        }else{
+                            perror("error magic\n");
+                            exit(-1);
                         }
                         break;
                     }
