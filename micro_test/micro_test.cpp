@@ -216,7 +216,7 @@ void con_database() {
 
         sprintf(key_buf, "%d", n);
         sprintf(value_buf, "%d", n);
-        memset(key_buf + strlen(key_buf), 'a'+c, VALUE_LEN - strlen(key_buf));
+        memset(key_buf + strlen(key_buf), 'a'+c, KEY_LEN - strlen(key_buf));
         memset(value_buf + strlen(value_buf), 'a'+c+1 , VALUE_LEN - strlen(value_buf));
         Pre_hash = static_cast<uint8_t > ((hash_func(key_buf, KEY_LEN)) % port_num);
 

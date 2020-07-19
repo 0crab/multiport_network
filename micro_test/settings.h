@@ -5,13 +5,15 @@
 #define HEAD_LEN 12
 
 #define KEY_LEN 8
-#define VALUE_LEN 8
+#define VALUE_LEN 16
 
 #define NUM 1000
 #define KV_NUM (NUM * 26)
 
 #define KEY_RANGE KV_NUM
 #define SKEW 0.0
+
+#define ROUND_SET 1
 
 #define PACKAGE_LEN    (HEAD_LEN + KEY_LEN + VALUE_LEN)
 #define DATABASE_LEN    (KV_NUM * PACKAGE_LEN)
@@ -42,7 +44,7 @@ int port_num;
 
 #define GET_PACKAGE(buf,i)  (buf + i * PACKAGE_LEN)
 
-#define ROUND_SET 1
+
 
 #define DATABASE_LEN KV_NUM * PACKAGE_LEN
 
