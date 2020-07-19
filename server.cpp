@@ -106,7 +106,7 @@ static void send_batch(CONNECTION * c){
                 conn_state_jump(c->conn_state,conn_closing);
             }
         }else{
-            if(ret == it->datalen){
+            if(ret == it->datalen - it->offset){
                 //finish write  free buf
                 free(it->buf);
                 c->batch_ret_vector.erase(it);
@@ -122,7 +122,7 @@ static void send_batch(CONNECTION * c){
                     //still have buf ,ready to write again
                     conn_state_jump(c->conn_state, conn_waiting);
                 }
-            }else if(ret < it->datalen){
+            }else if(ret < it->datalen - it->offset){
                 //only part of data was wrote back, continue to write
                 it->offset += ret;
                 conn_state_jump(c->conn_state, conn_waiting);
@@ -439,12 +439,12 @@ void process_func(CONNECTION *c) {
                         break;
                     }
                     case query_key : {
-                        std::cout << "query:" << c->key;
+                        //std::cout << "query:" << c->key;
                         if(hashTable.find(c->key, c->value)){
-                            std::cout << ":find" << c->value << endl;
+                          //  std::cout << ":find" << c->value << endl;
                             c->query_hit = true;
                         }else{
-                            std::cout << "not found" << endl;
+                            //std::cout << "not found" << endl;
                             c->query_hit = false;
                         }
                         //work_state change in this function
