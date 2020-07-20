@@ -1,3 +1,0 @@
-/home/czl/CLionProjects/multiport_network/micro_test/CMakeFiles/rebuild_cache.dir
-/home/czl/CLionProjects/multiport_network/micro_test/CMakeFiles/micro_test.dir
-/home/czl/CLionProjects/multiport_network/micro_test/CMakeFiles/edit_cache.dir

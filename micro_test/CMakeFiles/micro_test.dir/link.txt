@@ -1,1 +1,0 @@
-/usr/bin/c++     CMakeFiles/micro_test.dir/micro_test.cpp.o  -o micro_test -lpthread 
