@@ -38,7 +38,7 @@ void show_responce(char * rec_buf){
     printf("recv:%s\n",rec_buf + 12);
 }
 
-void con_send_buf(char * package_buf, int query_num){
+void con_send_buf(char * package_buf, uint64_t query_num){
 
 
     *(uint8_t *) HEAD_MAGIC(package_buf) = 0x80;
@@ -51,7 +51,7 @@ void con_send_buf(char * package_buf, int query_num){
 
     char key_buf[KEY_LEN + 1];
     char c = query_num % 26 + 'a';
-    sprintf(key_buf, "%d", query_num);
+    sprintf(key_buf, "%lu", query_num);
     memset(key_buf + strlen(key_buf), c, KEY_LEN - strlen(key_buf));
     memcpy(PACKAGE_KEY(package_buf), key_buf, KEY_LEN);
 }
@@ -85,7 +85,7 @@ int main(){
     for(int i = 0; i < TEST_NUM; i ++){
         memset(send_buf, 0, sizeof(send_buf));
         memset(rec_buf, 0, sizeof(rec_buf));
-        int query_num = rand() % RANGE;
+        uint64_t query_num = rand() % RANGE;
         con_send_buf(send_buf,query_num);
         write(connect_fd, send_buf,PACKAGE_LEN);
         show_query(send_buf);
