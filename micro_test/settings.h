@@ -5,7 +5,7 @@
 #define HEAD_LEN 12
 
 #define KEY_LEN 8
-#define VALUE_LEN 16
+#define VALUE_LEN 8
 
 #define NUM 1000
 #define KV_NUM (NUM * 26)
