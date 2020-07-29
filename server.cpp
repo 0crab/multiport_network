@@ -431,7 +431,7 @@ void process_func(CONNECTION *c) {
                         break;
                     }
                     case store_kvobj : {
-                        std::cout << "store " << c->key << ":" << c->value << endl;
+                        //std::cout << "store " << c->key << ":" << c->value << endl;
                         hashTable.insert_or_assign(c->key,c->value);
                         c->bytes_processed_in_this_connection += sizeof(c->binary_header) + c->binary_header.totalbodylen;
                         work_state_jump(c->work_state, parse_head);

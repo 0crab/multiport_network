@@ -65,6 +65,8 @@ vector<vector<BATCH_OBJ>> database;
 mutex * mutexlist;
 
 long * global_working_list;
+long * thread_work_len;
+
 int * round_list;
 
 uint64_t *total_send_bytes;
@@ -230,31 +232,15 @@ void con_database(){
 }
 
 
-bool fetch_and_send(uint32_t fd,int i,int tid,bool * send_finish,uint64_t * working_index) {
+bool fetch_and_send(uint32_t fd,int i,int tid,bool * send_finish,uint64_t  working_index) {
     //printf("thread %d,port %d fetch_and_send",tid,i);
     BATCH_OBJ * batchObj;
 
-    if(*send_finish == true ){
-        mutexlist[i].lock();
-        if( global_working_list[i] < (long)database[i].size() -1){
-            *working_index = ++ global_working_list[i];
-        }else{
-//            if(round_list[i] < ROUND_SET){
-//                round_list[i] ++;
-//                global_working_list[i] = -1;
-//            }else{
-//                mutexlist[i].unlock();
-//                return false;
-//            }
-            mutexlist[i].unlock();
-            return false;
-        }
-        mutexlist[i].unlock();
-    }
+
 
 
     //printf("thread %d,port %d fetch_and_send,working index: %lu\n",tid,i,*working_index);
-    batchObj = &database[i][*working_index];
+    batchObj = &database[i][working_index];
 
     int ret;
 
@@ -262,7 +248,7 @@ bool fetch_and_send(uint32_t fd,int i,int tid,bool * send_finish,uint64_t * work
     if (ret <= 0) {
         if (errno == EWOULDBLOCK || errno == EAGAIN) {
             *send_finish = false;
-            return true;
+            return false;
         } else {
             perror("write error");
             exit(-1);
@@ -291,14 +277,22 @@ bool fetch_and_send(uint32_t fd,int i,int tid,bool * send_finish,uint64_t * work
         total_recv_bytes[tid] += ret;
     }
 
-    return true;
+    return *send_finish;
 
 }
 
 void data_dispatch(int tid){
+
     uint32_t * fds = (uint32_t *) calloc(port_num, sizeof(int));
 
     uint64_t * thread_working_list = new uint64_t[port_num]();
+
+    uint64_t * thread_working_offset = new uint64_t[port_num]();
+
+    for(int i = 0;i<port_num;i++){
+        thread_working_list[i] = tid * thread_work_len[i];
+    }
+
 
     bool * finish_send = new bool[port_num];
 
@@ -339,15 +333,30 @@ void data_dispatch(int tid){
 
     Tracer t;
     t.startTime();
-    int stop_count;
-    while(stop_count != port_num){
-        stop_count = 0;
-        for(int i = 0;i< port_num;i++){
-            if(!fetch_and_send(fds[i],i,tid,finish_send+i,thread_working_list+i)){
-                stop_count ++;
+    for(int k = 0;k<ROUND_SET;k++){
+        int stop_count= 0;
+        int a =1;
+        for(int i = 0;i<port_num;i++){
+            thread_working_offset[i] = 0;
+            finish_send[i] = false;
+        }
+
+
+        while(stop_count != port_num){
+            stop_count = 0;
+            for(int i = 0;i< port_num;i++){
+                if(finish_send[i] == true && thread_working_offset[i] >= thread_work_len[i]){
+                    stop_count ++;
+                }else{
+                    if(fetch_and_send(fds[i],i,tid,finish_send+i,thread_working_list[i]+thread_working_offset[i])){
+                        thread_working_offset[i]++;
+                    }
+                }
+
             }
         }
     }
+
     timelist[tid] += t.getRunTime();
     for(int i = 0;i <port_num;i++){
         close(fds[i]);
@@ -399,8 +408,10 @@ int main(int argc, char **argv) {
 
     global_working_list = new long[port_num];
     for(int i = 0;i<port_num;i++){
-        global_working_list[i] = -1;
+        global_working_list[i] = 0;
     }
+
+
 
     round_list = new int[port_num];
 
@@ -409,6 +420,11 @@ int main(int argc, char **argv) {
 
 
     con_database();
+
+    thread_work_len = new long[port_num];
+    for(int i = 0;i<port_num;i++){
+        thread_work_len[i] = database[i].size()/thread_num;
+    }
 
     vector<thread> threads;
 
