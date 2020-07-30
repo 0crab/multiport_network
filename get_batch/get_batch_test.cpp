@@ -21,6 +21,8 @@
 
 #include <fcntl.h>
 
+#define BLOCK true
+
 using namespace std;
 
 const char *existingFilePath = "./testfile.dat";
@@ -246,6 +248,7 @@ bool fetch_and_send(uint32_t fd,int i,int tid,bool * send_finish,uint64_t  worki
 
     ret = write(fd, batchObj->buf + batchObj->offset, batchObj->datalen - batchObj->offset);
     if (ret <= 0) {
+#if(!BLOCK)
         if (errno == EWOULDBLOCK || errno == EAGAIN) {
             *send_finish = false;
             return false;
@@ -253,6 +256,10 @@ bool fetch_and_send(uint32_t fd,int i,int tid,bool * send_finish,uint64_t  worki
             perror("write error");
             exit(-1);
         }
+#else
+        perror("write error");
+        exit(-1);
+#endif
     }else if(ret < batchObj->datalen - batchObj->offset) {
         batchObj->offset +=ret;
         *send_finish = false;
@@ -267,12 +274,17 @@ bool fetch_and_send(uint32_t fd,int i,int tid,bool * send_finish,uint64_t  worki
     char rec_buf[4000];
     ret = read(fd, rec_buf, 4000);
     if(ret == -1){
+#if(!BLOCK)
         if (errno == EWOULDBLOCK || errno == EAGAIN) {
             //printf("read again\n");
         } else {
             perror("read error");
             exit(-1);
         }
+#else
+        perror("read error");
+        exit(-1);
+#endif
     }else{
         total_recv_bytes[tid] += ret;
     }
@@ -321,12 +333,13 @@ void data_dispatch(int tid){
             close(connect_fd);
             return ;
         }
-
+#if(!BLOCK)
         if (fcntl(connect_fd, F_SETFL, fcntl(connect_fd, F_GETFL) | O_NONBLOCK) < 0) {
             perror("setting O_NONBLOCK");
             close(connect_fd);
             return ;
         }
+#endif
 
         fds[i] = connect_fd;
     }
