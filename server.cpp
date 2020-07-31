@@ -127,6 +127,7 @@ static void send_batch(CONNECTION * c){
                 it->offset += ret;
                 conn_state_jump(c->conn_state, conn_waiting);
             }
+            c->bytes_wrote_back_in_this_connection+=ret;
         }
 
     }
@@ -477,6 +478,7 @@ void process_func(CONNECTION *c) {
                                 c->ret_bytes -=ret;
                                 conn_state_jump(c->conn_state, conn_waiting);
                             }
+                            c->bytes_wrote_back_in_this_connection+=ret;
                         }
                         break;
                     }
@@ -501,8 +503,11 @@ void process_func(CONNECTION *c) {
             }
 
             case conn_closing : {
-                printf("[%d:%d] conn_closing ,processed bytes: %lu \n", \
-                        c->thread_index, c->sfd, c->bytes_processed_in_this_connection);
+                printf("[%d:%d] conn_closing ,processed bytes: %lu ,wrote bytes: %lu\n",
+                        c->thread_index,
+                        c->sfd,
+                        c->bytes_processed_in_this_connection,
+                        c->bytes_wrote_back_in_this_connection);
                 conn_close(c);
                 stop = true;
                 break;
@@ -559,6 +564,7 @@ void conn_new(int sfd, struct event_base *base, int thread_index) {
     c->recv_bytes = 0;
     c->remaining_bytes = 0;
     c->bytes_processed_in_this_connection = 0;
+    c->bytes_wrote_back_in_this_connection = 0;
 
     c->query_hit = false;
     c->ret_buf_offset = 0;

@@ -74,7 +74,13 @@ bool Connection::fetch_and_send(package_obj p) {
     offset += p.package_len;
     ++ op_count;
     if(op_count >= SEND_BATCH){
-        write(this->fd, send_buf, offset); //The offset is equal to the amount of data
+        int ret = write(this->fd, send_buf, offset); //The offset is equal to the amount of data
+        if(ret != offset){
+            //actually not error;we didn't take this condition into consideration before,so we let it crash here
+            //once the program exit here, old test data need to be reconsidered.
+            perror("write error");
+            exit(-1);
+        }
         send_bytes += offset;
         op_count = 0;
         offset = 0;
@@ -85,7 +91,13 @@ bool Connection::fetch_and_send(package_obj p) {
 }
 
 void Connection::clean() {
-    write(this->fd, send_buf, offset); //The offset is equal to the amount of data
+    int ret = write(this->fd, send_buf, offset); //The offset is equal to the amount of data
+    if(ret != offset){
+        //actually not error;we didn't take this condition into consideration before,so we let it crash here
+        //once the program exit here, old test data need to be reconsidered.
+        perror("write error");
+        exit(-1);
+    }
     send_bytes += offset;
     op_count = 0;
     offset = 0;
